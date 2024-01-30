@@ -70,6 +70,10 @@ public class UserSetting {
 
     private boolean registerKeepIntDialog = false;
 
+    private String antiTheftSecret;
+
+    private Long antiTheftTimeout = 15000L;
+
     public Boolean getSavePositionHistory() {
         return savePositionHistory;
     }
@@ -304,5 +308,20 @@ public class UserSetting {
 
     public void setRegisterKeepIntDialog(boolean registerKeepIntDialog) {
         this.registerKeepIntDialog = registerKeepIntDialog;
+    }
+    public String getAntiTheftSecret() {
+        return antiTheftSecret;
+    }
+
+    public void setAntiTheftSecret(String antiTheftSecret) {
+        this.antiTheftSecret = antiTheftSecret;
+    }
+
+    public Long getAntiTheftTimeout() {
+        return antiTheftTimeout;
+    }
+
+    public void setAntiTheftTimeout(Long antiTheftTimeout) {
+        this.antiTheftTimeout = antiTheftTimeout;
     }
 }

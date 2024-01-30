@@ -32,12 +32,14 @@ import com.genersoft.iot.vmp.vmanager.bean.ErrorCode;
 import com.genersoft.iot.vmp.vmanager.bean.OtherPsSendInfo;
 import com.genersoft.iot.vmp.vmanager.bean.OtherRtpSendInfo;
 import com.genersoft.iot.vmp.vmanager.bean.StreamContent;
+import com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.util.DigestUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.async.DeferredResult;
@@ -45,7 +47,9 @@ import org.springframework.web.context.request.async.DeferredResult;
 import javax.servlet.http.HttpServletRequest;
 import javax.sip.InvalidArgumentException;
 import javax.sip.SipException;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,9 +166,9 @@ public class ZLMHttpHookListener {
             logger.debug("[ZLM HOOK] 播放鉴权：{}->{}" + param.getMediaServerId(), param);
         }
         String mediaServerId = param.getMediaServerId();
-
+        JSONObject json = (JSONObject) JSON.toJSON(param);
         taskExecutor.execute(() -> {
-            JSONObject json = (JSONObject) JSON.toJSON(param);
+
             ZlmHttpHookSubscribe.Event subscribe = this.subscribe.sendNotify(HookType.on_play, json);
             if (subscribe != null) {
                 MediaServerItem mediaInfo = mediaServerService.getOne(mediaServerId);
@@ -173,6 +177,10 @@ public class ZLMHttpHookListener {
                 }
             }
         });
+        if (!isValidAntiTheft(json)) {
+            return new HookResult(401, "播放不合法或者已失效");
+        }
+
         if (!"rtp".equals(param.getApp())) {
             Map<String, String> paramMap = urlParamToMap(param.getParams());
             StreamAuthorityInfo streamAuthorityInfo = redisCatchStorage.getStreamAuthorityInfo(param.getApp(), param.getStream());
@@ -813,6 +821,48 @@ public class ZLMHttpHookListener {
             String[] paramArray = param.split("=");
             if (paramArray.length == 2) {
                 map.put(paramArray[0], paramArray[1]);
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 校验请求是否合法
+     * @param json hook请求json
+     * @return boolean
+     */
+    private boolean isValidAntiTheft(JSONObject json) {
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(userSetting.getAntiTheftSecret())) {
+            String app = json.getString("app");
+            String stream = json.getString("stream");
+            String params = json.getString("params");
+            Map<String, String> paramMap = buildMapFromUrl(params);
+            String timestampStr = paramMap.get("t");
+            String hash = paramMap.get("h");
+            if (timestampStr != null && hash != null) {
+                String hexStr = app + "/" + stream + "@" + timestampStr + "@" + userSetting.getAntiTheftSecret();
+                String targetHash = DigestUtils.md5DigestAsHex(hexStr.getBytes(StandardCharsets.UTF_8));
+                if (targetHash.equalsIgnoreCase(hash)) {
+                    long nowTimestamp = Instant.now().toEpochMilli();
+                    if (Long.parseLong(timestampStr) + userSetting.getAntiTheftTimeout() > nowTimestamp) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static Map<String, String> buildMapFromUrl(String queryUrl) {
+        Map<String, String> map = Maps.newHashMap();
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(queryUrl)) {
+            String[] params = queryUrl.split("&");
+            for (int i = 0; i < params.length; i++) {
+                String[] p = params[i].split("=");
+                if (p.length == 2) {
+                    map.put(p[0], p[1]);
+                }
             }
         }
         return map;
