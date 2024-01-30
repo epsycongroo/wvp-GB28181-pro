@@ -1,7 +1,6 @@
 package com.genersoft.iot.vmp.gb28181.transmit.event.request.impl.info;
 
-import com.genersoft.iot.vmp.common.InviteInfo;
-import com.genersoft.iot.vmp.common.InviteSessionType;
+import com.genersoft.iot.vmp.common.StreamInfo;
 import com.genersoft.iot.vmp.gb28181.bean.*;
 import com.genersoft.iot.vmp.gb28181.event.SipSubscribe;
 import com.genersoft.iot.vmp.gb28181.session.VideoStreamSessionManager;
@@ -10,7 +9,6 @@ import com.genersoft.iot.vmp.gb28181.transmit.cmd.impl.SIPCommander;
 import com.genersoft.iot.vmp.gb28181.transmit.event.request.ISIPRequestProcessor;
 import com.genersoft.iot.vmp.gb28181.transmit.event.request.SIPRequestProcessorParent;
 import com.genersoft.iot.vmp.gb28181.utils.SipUtils;
-import com.genersoft.iot.vmp.service.IInviteStreamService;
 import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
 import com.genersoft.iot.vmp.storager.IVideoManagerStorage;
 import gov.nist.javax.sip.message.SIPRequest;
@@ -19,12 +17,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
 import javax.sip.InvalidArgumentException;
 import javax.sip.RequestEvent;
 import javax.sip.SipException;
-import javax.sip.header.CallIdHeader;
-import javax.sip.header.ContentTypeHeader;
+import javax.sip.header.*;
 import javax.sip.message.Response;
 import java.text.ParseException;
 
@@ -48,9 +44,6 @@ public class InfoRequestProcessor extends SIPRequestProcessorParent implements I
     private IRedisCatchStorage redisCatchStorage;
 
     @Autowired
-    private IInviteStreamService inviteStreamService;
-
-    @Autowired
     private IVideoManagerStorage storager;
 
     @Autowired
@@ -68,14 +61,11 @@ public class InfoRequestProcessor extends SIPRequestProcessorParent implements I
     @Override
     public void process(RequestEvent evt) {
         logger.debug("接收到消息：" + evt.getRequest());
-        SIPRequest request = (SIPRequest) evt.getRequest();
-        String deviceId = SipUtils.getUserIdFromFromHeader(request);
-        CallIdHeader callIdHeader = request.getCallIdHeader();
+        String deviceId = SipUtils.getUserIdFromFromHeader(evt.getRequest());
+        CallIdHeader callIdHeader = (CallIdHeader)evt.getRequest().getHeader(CallIdHeader.NAME);
         // 先从会话内查找
         SsrcTransaction ssrcTransaction = sessionManager.getSsrcTransaction(null, null, callIdHeader.getCallId(), null);
-
-        // 兼容海康 媒体通知 消息from字段不是设备ID的问题
-        if (ssrcTransaction != null) {
+        if (ssrcTransaction != null) { // 兼容海康 媒体通知 消息from字段不是设备ID的问题
             deviceId = ssrcTransaction.getDeviceId();
         }
         // 查询设备是否存在
@@ -85,6 +75,7 @@ public class InfoRequestProcessor extends SIPRequestProcessorParent implements I
         try {
             if (device != null && parentPlatform != null) {
                 logger.warn("[重复]平台与设备编号重复：{}", deviceId);
+                SIPRequest request = (SIPRequest) evt.getRequest();
                 String hostAddress = request.getRemoteAddress().getHostAddress();
                 int remotePort = request.getRemotePort();
                 if (device.getHostAddress().equals(hostAddress + ":" + remotePort)) {
@@ -95,45 +86,48 @@ public class InfoRequestProcessor extends SIPRequestProcessorParent implements I
             }
             if (device == null && parentPlatform == null) {
                 // 不存在则回复404
-                responseAck(request, Response.NOT_FOUND, "device "+ deviceId +" not found");
+                responseAck(evt, Response.NOT_FOUND, "device "+ deviceId +" not found");
                 logger.warn("[设备未找到 ]： {}", deviceId);
                 if (sipSubscribe.getErrorSubscribe(callIdHeader.getCallId()) != null){
-                    DeviceNotFoundEvent deviceNotFoundEvent = new DeviceNotFoundEvent(evt.getDialog());
-                    deviceNotFoundEvent.setCallId(callIdHeader.getCallId());
-                    SipSubscribe.EventResult eventResult = new SipSubscribe.EventResult(deviceNotFoundEvent);
+                    SipSubscribe.EventResult eventResult = new SipSubscribe.EventResult(new DeviceNotFoundEvent(evt.getDialog()));
                     sipSubscribe.getErrorSubscribe(callIdHeader.getCallId()).response(eventResult);
                 };
             }else {
                 ContentTypeHeader header = (ContentTypeHeader)evt.getRequest().getHeader(ContentTypeHeader.NAME);
                 String contentType = header.getContentType();
                 String contentSubType = header.getContentSubType();
-                if ("Application".equalsIgnoreCase(contentType) && "MANSRTSP".equalsIgnoreCase(contentSubType)) {
+                if ("Application".equals(contentType) && "MANSRTSP".equals(contentSubType)) {
                     SendRtpItem sendRtpItem = redisCatchStorage.querySendRTPServer(null, null, null, callIdHeader.getCallId());
                     String streamId = sendRtpItem.getStreamId();
-                    InviteInfo inviteInfo = inviteStreamService.getInviteInfoByStream(InviteSessionType.PLAYBACK, streamId);
-                    if (null == inviteInfo) {
-                        responseAck(request, Response.NOT_FOUND, "stream " + streamId + " not found");
+                    StreamInfo streamInfo = redisCatchStorage.queryPlayback(null, null, streamId, null);
+                    if (null == streamInfo) {
+                        responseAck(evt, Response.NOT_FOUND, "stream " + streamId + " not found");
                         return;
                     }
-                    Device device1 = storager.queryVideoDevice(inviteInfo.getDeviceId());
-                    if (inviteInfo.getStreamInfo() != null) {
-                        cmder.playbackControlCmd(device1,inviteInfo.getStreamInfo(),new String(evt.getRequest().getRawContent()),eventResult -> {
-                            // 失败的回复
-                            try {
-                                responseAck(request, eventResult.statusCode, eventResult.msg);
-                            } catch (SipException | InvalidArgumentException | ParseException e) {
-                                logger.error("[命令发送失败] 国标级联 录像控制: {}", e.getMessage());
-                            }
-                        }, eventResult -> {
-                            // 成功的回复
-                            try {
-                                responseAck(request, eventResult.statusCode);
-                            } catch (SipException | InvalidArgumentException | ParseException e) {
-                                logger.error("[命令发送失败] 国标级联 录像控制: {}", e.getMessage());
-                            }
-                        });
-                    }
-
+                    Device device1 = storager.queryVideoDevice(streamInfo.getDeviceID());
+                    cmder.playbackControlCmd(device1,streamInfo,new String(evt.getRequest().getRawContent()),eventResult -> {
+                        // 失败的回复
+                        try {
+                            responseAck(evt, eventResult.statusCode, eventResult.msg);
+                        } catch (SipException e) {
+                            e.printStackTrace();
+                        } catch (InvalidArgumentException e) {
+                            e.printStackTrace();
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                    }, eventResult -> {
+                        // 成功的回复
+                        try {
+                            responseAck(evt, eventResult.statusCode);
+                        } catch (SipException e) {
+                            e.printStackTrace();
+                        } catch (InvalidArgumentException e) {
+                            e.printStackTrace();
+                        } catch (ParseException e) {
+                            e.printStackTrace();
+                        }
+                    });
                 }
             }
         } catch (SipException e) {

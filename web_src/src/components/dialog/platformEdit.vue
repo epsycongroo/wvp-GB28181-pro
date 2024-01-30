@@ -37,13 +37,13 @@
               <el-form-item label="本地端口" prop="devicePort">
                 <el-input v-model="platform.devicePort" :disabled="true" type="number"></el-input>
               </el-form-item>
-              <el-form-item label="SIP认证用户名" prop="username">
-                <el-input v-model="platform.username"></el-input>
-              </el-form-item>
             </el-form>
           </el-col>
           <el-col :span="12">
             <el-form ref="platform2" :rules="rules" :model="platform" label-width="160px">
+              <el-form-item label="SIP认证用户名" prop="username">
+                <el-input v-model="platform.username"></el-input>
+              </el-form-item>
               <el-form-item label="行政区划" prop="administrativeDivision">
                 <el-input v-model="platform.administrativeDivision" clearable></el-input>
               </el-form-item>
@@ -90,11 +90,9 @@
               </el-form-item>
               <el-form-item label="其他选项">
                 <el-checkbox label="启用" v-model="platform.enable" @change="checkExpires"></el-checkbox>
-<!--                <el-checkbox label="云台控制" v-model="platform.ptz"></el-checkbox>-->
-                <el-checkbox label="拉起推流" v-model="platform.startOfflinePush"></el-checkbox>
-                <el-checkbox label="RTCP保活" v-model="platform.rtcp" @change="rtcpCheckBoxChange"></el-checkbox>
-                <el-checkbox label="消息通道" v-model="platform.asMessageChannel" ></el-checkbox>
-                <el-checkbox label="推送通道" v-model="platform.autoPushChannel" ></el-checkbox>
+                <el-checkbox label="云台控制" v-model="platform.ptz"></el-checkbox>
+                <el-checkbox label="共享所有直播流" v-model="platform.shareAllLiveStream"></el-checkbox>
+                <el-checkbox label="拉起离线推流" v-model="platform.startOfflinePush"></el-checkbox>
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="onSubmit">{{
@@ -141,8 +139,6 @@ export default {
         enable: true,
         ptz: true,
         rtcp: false,
-        asMessageChannel: false,
-        autoPushChannel: false,
         name: null,
         serverGBId: null,
         serverGBDomain: null,
@@ -153,10 +149,11 @@ export default {
         devicePort: null,
         username: null,
         password: null,
-        expires: 3600,
+        expires: 300,
         keepTimeout: 60,
         transport: "UDP",
         characterSet: "GB2312",
+        shareAllLiveStream: false,
         startOfflinePush: false,
         catalogGroup: 1,
         administrativeDivision: null,
@@ -192,15 +189,12 @@ export default {
           url:`/api/platform/server_config`
         }).then(function (res) {
           console.log(res);
-          if (res.data.code === 0) {
-            that.platform.deviceGBId = res.data.data.username;
-            that.platform.deviceIp = res.data.data.deviceIp;
-            that.platform.devicePort = res.data.data.devicePort;
-            that.platform.username = res.data.data.username;
-            that.platform.password = res.data.data.password;
-            that.platform.administrativeDivision = res.data.data.username.substr(0, 6);
-          }
-
+          that.platform.deviceGBId = res.data.username;
+          that.platform.deviceIp = res.data.deviceIp;
+          that.platform.devicePort = res.data.devicePort;
+          that.platform.username = res.data.username;
+          that.platform.password = res.data.password;
+          that.platform.administrativeDivision = res.data.username.substr(0, 6);
         }).catch(function (error) {
           console.log(error);
         });
@@ -209,8 +203,6 @@ export default {
         this.platform.enable = platform.enable;
         this.platform.ptz = platform.ptz;
         this.platform.rtcp = platform.rtcp;
-        this.platform.asMessageChannel = platform.asMessageChannel;
-        this.platform.autoPushChannel = platform.autoPushChannel;
         this.platform.name = platform.name;
         this.platform.serverGBId = platform.serverGBId;
         this.platform.serverGBDomain = platform.serverGBDomain;
@@ -225,6 +217,7 @@ export default {
         this.platform.keepTimeout = platform.keepTimeout;
         this.platform.transport = platform.transport;
         this.platform.characterSet = platform.characterSet;
+        this.platform.shareAllLiveStream = platform.shareAllLiveStream;
         this.platform.catalogId = platform.catalogId;
         this.platform.startOfflinePush = platform.startOfflinePush;
         this.platform.catalogGroup = platform.catalogGroup;
@@ -246,36 +239,35 @@ export default {
       if (this.platform.administrativeDivision == null) {
         this.platform.administrativeDivision = this.platform.deviceGBId.substr(0, 6);
       }
+
     },
     onSubmit: function () {
-      this.saveForm()
-    },
-    saveForm: function (){
-      this.$axios({
+      var that = this;
+      that.$axios({
         method: 'post',
         url: this.saveUrl,
-        data: this.platform
-      }).then((res) =>{
-        if (res.data.code === 0) {
-          this.$message({
-            showClose: true,
-            message: "保存成功",
-            type: "success",
-          });
-          this.showDialog = false;
-          if (this.listChangeCallback != null) {
-            this.listChangeCallback();
+        data: that.platform
+      }).then(function (res) {
+          if (res.data.code === 0) {
+            that.$message({
+              showClose: true,
+              message: "保存成功",
+              type: "success",
+            });
+            that.showDialog = false;
+            if (that.listChangeCallback != null) {
+              that.listChangeCallback();
+            }
+          }else {
+            that.$message({
+              showClose: true,
+              message: res.data.msg,
+              type: "error",
+            });
           }
-        }else {
-          this.$message({
-            showClose: true,
-            message: res.data.msg,
-            type: "error",
-          });
-        }
-      }).catch((error)=> {
-        console.log(error);
-      });
+        }).catch(function (error) {
+          console.log(error);
+        });
     },
     close: function () {
       this.showDialog = false;
@@ -286,8 +278,6 @@ export default {
         enable: true,
         ptz: true,
         rtcp: false,
-        asMessageChannel: false,
-        autoPushChannel: false,
         name: null,
         serverGBId: null,
         administrativeDivision: null,
@@ -299,10 +289,11 @@ export default {
         devicePort: null,
         username: null,
         password: null,
-        expires: 3600,
+        expires: 300,
         keepTimeout: 60,
         transport: "UDP",
         characterSet: "GB2312",
+        shareAllLiveStream: false,
         startOfflinePush: false,
         catalogGroup: 1,
       }
@@ -311,12 +302,10 @@ export default {
       var result = false;
       var that = this;
       await that.$axios({
-                method: 'get',
+                method: 'post',
                 url:`/api/platform/exit/${deviceGbId}`})
         .then(function (res) {
-            if (res.data.code === 0) {
-              result = res.data.data;
-            }
+          result = res.data;
         })
         .catch(function (error) {
           console.log(error);
@@ -324,19 +313,10 @@ export default {
       return result;
     },
     checkExpires: function() {
-      if (this.platform.enable && this.platform.expires === "0") {
-        this.platform.expires = "3600";
+      if (this.platform.enable && this.platform.expires == "0") {
+        this.platform.expires = "300";
       }
-    },
-    rtcpCheckBoxChange: function (result){
-      if (result) {
-        this.$message({
-          showClose: true,
-          message: "开启RTCP保活需要上级平台支持，可以避免无效推流",
-          type: "warning",
-        });
-      }
-    },
+    }
   },
 };
 </script>

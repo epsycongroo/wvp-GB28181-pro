@@ -1,18 +1,19 @@
 package com.genersoft.iot.vmp.conf;
 
 
-import org.springframework.core.annotation.Order;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "sip", ignoreInvalidFields = true)
-@Order(0)
 public class SipConfig {
 
 	private String ip;
 
-	private String showIp;
+	/**
+	 * 默认使用 0.0.0.0
+	 */
+	private String monitorIp = "0.0.0.0";
 
 	private Integer port;
 
@@ -24,12 +25,18 @@ public class SipConfig {
 	
 	Integer ptzSpeed = 50;
 
+	Integer keepaliveTimeOut = 255;
+
 	Integer registerTimeInterval = 120;
 
 	private boolean alarm;
 
 	public void setIp(String ip) {
 		this.ip = ip;
+	}
+
+	public void setMonitorIp(String monitorIp) {
+		this.monitorIp = monitorIp;
 	}
 
 	public void setPort(Integer port) {
@@ -52,9 +59,16 @@ public class SipConfig {
 		this.ptzSpeed = ptzSpeed;
 	}
 
+	public void setKeepaliveTimeOut(Integer keepaliveTimeOut) {
+		this.keepaliveTimeOut = keepaliveTimeOut;
+	}
 
 	public void setRegisterTimeInterval(Integer registerTimeInterval) {
 		this.registerTimeInterval = registerTimeInterval;
+	}
+
+	public String getMonitorIp() {
+		return monitorIp;
 	}
 
 	public String getIp() {
@@ -85,6 +99,10 @@ public class SipConfig {
 		return ptzSpeed;
 	}
 
+	public Integer getKeepaliveTimeOut() {
+		return keepaliveTimeOut;
+	}
+
 	public Integer getRegisterTimeInterval() {
 		return registerTimeInterval;
 	}
@@ -95,16 +113,5 @@ public class SipConfig {
 
 	public void setAlarm(boolean alarm) {
 		this.alarm = alarm;
-	}
-
-	public String getShowIp() {
-		if (this.showIp == null) {
-			return this.ip;
-		}
-		return showIp;
-	}
-
-	public void setShowIp(String showIp) {
-		this.showIp = showIp;
 	}
 }

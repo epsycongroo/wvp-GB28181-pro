@@ -1,8 +1,5 @@
 package com.genersoft.iot.vmp.media.zlm.dto;
 
-import com.genersoft.iot.vmp.media.zlm.dto.hook.OnPublishHookParam;
-import com.genersoft.iot.vmp.media.zlm.dto.hook.OnStreamChangedHookParam;
-
 /**
  * 流的鉴权信息
  * @author lin
@@ -105,13 +102,13 @@ public class StreamAuthorityInfo {
         return streamAuthorityInfo;
     }
 
-    public static StreamAuthorityInfo getInstanceByHook(OnStreamChangedHookParam onStreamChangedHookParam) {
+    public static StreamAuthorityInfo getInstanceByHook(MediaItem mediaItem) {
         StreamAuthorityInfo streamAuthorityInfo = new StreamAuthorityInfo();
-        streamAuthorityInfo.setApp(onStreamChangedHookParam.getApp());
-        streamAuthorityInfo.setStream(onStreamChangedHookParam.getStream());
-        streamAuthorityInfo.setId(onStreamChangedHookParam.getMediaServerId());
-        streamAuthorityInfo.setOriginType(onStreamChangedHookParam.getOriginType());
-        streamAuthorityInfo.setOriginTypeStr(onStreamChangedHookParam.getOriginTypeStr());
+        streamAuthorityInfo.setApp(mediaItem.getApp());
+        streamAuthorityInfo.setStream(mediaItem.getStream());
+        streamAuthorityInfo.setId(mediaItem.getMediaServerId());
+        streamAuthorityInfo.setOriginType(mediaItem.getOriginType());
+        streamAuthorityInfo.setOriginTypeStr(mediaItem.getOriginTypeStr());
         return streamAuthorityInfo;
     }
 }

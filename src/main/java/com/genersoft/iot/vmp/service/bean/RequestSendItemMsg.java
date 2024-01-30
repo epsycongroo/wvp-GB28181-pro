@@ -63,16 +63,10 @@ public class RequestSendItemMsg {
     private Boolean isTcp;
 
 
-    /**
-     * 是否使用TCP
-     */
-    private Boolean rtcp;
-
-
 
 
     public static RequestSendItemMsg getInstance(String serverId, String mediaServerId, String app, String stream, String ip, int port,
-                                                 String ssrc, String platformId, String channelId, Boolean isTcp, Boolean rtcp, String platformName) {
+                                                          String ssrc, String platformId, String channelId, Boolean isTcp, String platformName) {
         RequestSendItemMsg requestSendItemMsg = new RequestSendItemMsg();
         requestSendItemMsg.setServerId(serverId);
         requestSendItemMsg.setMediaServerId(mediaServerId);
@@ -85,7 +79,6 @@ public class RequestSendItemMsg {
         requestSendItemMsg.setPlatformName(platformName);
         requestSendItemMsg.setChannelId(channelId);
         requestSendItemMsg.setTcp(isTcp);
-        requestSendItemMsg.setRtcp(rtcp);
 
         return  requestSendItemMsg;
     }
@@ -176,13 +169,5 @@ public class RequestSendItemMsg {
 
     public void setTcp(Boolean tcp) {
         isTcp = tcp;
-    }
-
-    public Boolean getRtcp() {
-        return rtcp;
-    }
-
-    public void setRtcp(Boolean rtcp) {
-        this.rtcp = rtcp;
     }
 }

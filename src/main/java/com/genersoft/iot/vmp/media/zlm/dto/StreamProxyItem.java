@@ -1,48 +1,25 @@
 package com.genersoft.iot.vmp.media.zlm.dto;
 
 import com.genersoft.iot.vmp.gb28181.bean.GbStream;
-import io.swagger.v3.oas.annotations.media.Schema;
 
-/**
- * @author lin
- */
-@Schema(description = "拉流代理的信息")
 public class StreamProxyItem extends GbStream {
 
-    @Schema(description = "类型")
     private String type;
-    @Schema(description = "应用名")
     private String app;
-    @Schema(description = "流ID")
     private String stream;
-    @Schema(description = "流媒体服务ID")
     private String mediaServerId;
-    @Schema(description = "拉流地址")
     private String url;
-    @Schema(description = "拉流地址")
-    private String srcUrl;
-    @Schema(description = "目标地址")
-    private String dstUrl;
-    @Schema(description = "超时时间")
-    private int timeoutMs;
-    @Schema(description = "ffmpeg模板KEY")
-    private String ffmpegCmdKey;
-    @Schema(description = "rtsp拉流时，拉流方式，0：tcp，1：udp，2：组播")
-    private String rtpType;
-    @Schema(description = "是否启用")
+    private String src_url;
+    private String dst_url;
+    private int timeout_ms;
+    private String ffmpeg_cmd_key;
+    private String rtp_type;
     private boolean enable;
-    @Schema(description = "是否启用音频")
-    private boolean enableAudio;
-    @Schema(description = "是否启用MP4")
-    private boolean enableMp4;
-    @Schema(description = "是否 无人观看时删除")
-    private boolean enableRemoveNoneReader;
-
-    @Schema(description = "是否 无人观看时自动停用")
-    private boolean enableDisableNoneReader;
-
-    @Schema(description = "拉流代理时zlm返回的key，用于停止拉流代理")
-    private String streamKey;
+    private boolean enable_hls;
+    private boolean enable_mp4;
+    private boolean enable_remove_none_reader; // 无人观看时删除
+    private String platformGbId;
+    private String createTime;
 
     public String getType() {
         return type;
@@ -90,44 +67,44 @@ public class StreamProxyItem extends GbStream {
         this.url = url;
     }
 
-    public String getSrcUrl() {
-        return srcUrl;
+    public String getSrc_url() {
+        return src_url;
     }
 
-    public void setSrcUrl(String src_url) {
-        this.srcUrl = src_url;
+    public void setSrc_url(String src_url) {
+        this.src_url = src_url;
     }
 
-    public String getDstUrl() {
-        return dstUrl;
+    public String getDst_url() {
+        return dst_url;
     }
 
-    public void setDstUrl(String dst_url) {
-        this.dstUrl = dst_url;
+    public void setDst_url(String dst_url) {
+        this.dst_url = dst_url;
     }
 
-    public int getTimeoutMs() {
-        return timeoutMs;
+    public int getTimeout_ms() {
+        return timeout_ms;
     }
 
-    public void setTimeoutMs(int timeout_ms) {
-        this.timeoutMs = timeout_ms;
+    public void setTimeout_ms(int timeout_ms) {
+        this.timeout_ms = timeout_ms;
     }
 
-    public String getFfmpegCmdKey() {
-        return ffmpegCmdKey;
+    public String getFfmpeg_cmd_key() {
+        return ffmpeg_cmd_key;
     }
 
-    public void setFfmpegCmdKey(String ffmpeg_cmd_key) {
-        this.ffmpegCmdKey = ffmpeg_cmd_key;
+    public void setFfmpeg_cmd_key(String ffmpeg_cmd_key) {
+        this.ffmpeg_cmd_key = ffmpeg_cmd_key;
     }
 
-    public String getRtpType() {
-        return rtpType;
+    public String getRtp_type() {
+        return rtp_type;
     }
 
-    public void setRtpType(String rtp_type) {
-        this.rtpType = rtp_type;
+    public void setRtp_type(String rtp_type) {
+        this.rtp_type = rtp_type;
     }
 
     public boolean isEnable() {
@@ -138,43 +115,45 @@ public class StreamProxyItem extends GbStream {
         this.enable = enable;
     }
 
-    public boolean isEnableMp4() {
-        return enableMp4;
+    public boolean isEnable_hls() {
+        return enable_hls;
     }
 
-    public void setEnableMp4(boolean enable_mp4) {
-        this.enableMp4 = enable_mp4;
+    public void setEnable_hls(boolean enable_hls) {
+        this.enable_hls = enable_hls;
     }
 
-    public boolean isEnableRemoveNoneReader() {
-        return enableRemoveNoneReader;
+    public boolean isEnable_mp4() {
+        return enable_mp4;
     }
 
-    public void setEnableRemoveNoneReader(boolean enable_remove_none_reader) {
-        this.enableRemoveNoneReader = enable_remove_none_reader;
+    public void setEnable_mp4(boolean enable_mp4) {
+        this.enable_mp4 = enable_mp4;
     }
 
-    public boolean isEnableDisableNoneReader() {
-        return enableDisableNoneReader;
+
+    public String getPlatformGbId() {
+        return platformGbId;
     }
 
-    public void setEnableDisableNoneReader(boolean enable_disable_none_reader) {
-        this.enableDisableNoneReader = enable_disable_none_reader;
+    public void setPlatformGbId(String platformGbId) {
+        this.platformGbId = platformGbId;
     }
 
-    public boolean isEnableAudio() {
-        return enableAudio;
+    public String getCreateTime() {
+        return createTime;
     }
 
-    public void setEnableAudio(boolean enable_audio) {
-        this.enableAudio = enable_audio;
+    public void setCreateTime(String createTime) {
+        this.createTime = createTime;
     }
 
-    public String getStreamKey() {
-        return streamKey;
+    public boolean isEnable_remove_none_reader() {
+        return enable_remove_none_reader;
     }
 
-    public void setStreamKey(String streamKey) {
-        this.streamKey = streamKey;
+    public void setEnable_remove_none_reader(boolean enable_remove_none_reader) {
+        this.enable_remove_none_reader = enable_remove_none_reader;
     }
+
 }

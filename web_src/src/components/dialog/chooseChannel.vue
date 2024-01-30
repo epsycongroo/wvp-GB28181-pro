@@ -1,14 +1,14 @@
 <template>
-<div id="chooseChannel" >
+<div id="chooseChannel" v-loading="isLoging">
 
-    <el-dialog title="选择通道" v-loading="loading" v-if="showDialog" top="2rem" width="90%" :close-on-click-modal="false" :visible.sync="showDialog" :destroy-on-close="true" @close="close()">
+    <el-dialog title="选择通道" v-if="showDialog" top="2rem" width="90%" :close-on-click-modal="false" :visible.sync="showDialog" :destroy-on-close="true" @close="close()">
       <el-row>
         <el-col :span="10">
           <el-tabs v-model="catalogTabActiveName" >
             <el-tab-pane label="目录结构" name="catalog">
               <el-container>
                 <el-main v-bind:style="{backgroundColor: '#FFF', maxHeight:  winHeight + 'px'}">
-                  <chooseChannelForCatalog ref="chooseChannelForCatalog" :platformId=platformId :platformDeviceId=platformDeviceId :platformName=platformName :defaultCatalogId=defaultCatalogId :catalogIdChange="catalogIdChange" ></chooseChannelForCatalog>
+                  <chooseChannelForCatalog ref="chooseChannelForCatalog" :platformId=platformId :platformName=platformName :defaultCatalogId=defaultCatalogId :catalogIdChange="catalogIdChange" ></chooseChannelForCatalog>
                 </el-main>
               </el-container>
             </el-tab-pane>
@@ -56,11 +56,10 @@ export default {
     },
     data() {
         return {
-            loading: false,
+            isLoging: false,
             tabActiveName: "gbChannel",
             catalogTabActiveName: "catalog",
             platformId: "",
-            platformDeviceId: "",
             catalogId: "",
             catalogName: "",
             currentCatalogId: "",
@@ -73,10 +72,8 @@ export default {
         };
     },
     methods: {
-        openDialog(platformId, platformDeviceId, platformName, defaultCatalogId, closeCallback) {
-            console.log("defaultCatalogId: " + defaultCatalogId)
+        openDialog(platformId, platformName, defaultCatalogId, closeCallback) {
             this.platformId = platformId
-            this.platformDeviceId = platformDeviceId
             this.platformName = platformName
             this.defaultCatalogId = defaultCatalogId
             this.showDialog = true
@@ -92,17 +89,18 @@ export default {
 
         },
         save: function() {
+            var that = this;
 
             this.$axios({
                 method:"post",
                 url:"/api/platform/update_channel_for_gb",
                 data:{
-                    platformId:  this.platformId,
-                    channelReduces:  this.chooseData
+                    platformId:  that.platformId,
+                    channelReduces:  that.chooseData
                 }
             }).then((res)=>{
-              if (res.data.code === 0) {
-                this.$message({
+                if (res.data == true) {
+                    that.$message({
                         showClose: true,
                         message: '保存成功,',
                         type: 'success'
@@ -111,7 +109,6 @@ export default {
             }).catch(function (error) {
                 console.log(error);
             });
-
         },
         catalogIdChange: function (id, name) {
             this.catalogId = id;

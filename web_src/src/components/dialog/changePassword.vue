@@ -35,7 +35,6 @@
 
 <script>
 import crypto from 'crypto'
-import userService from "../service/UserService";
 export default {
   name: "changePassword",
   props: {},
@@ -97,7 +96,7 @@ export default {
           password: this.newPassword
         }
       }).then((res)=> {
-        if (res.data.code === 0) {
+        if (res.data === "success"){
           this.$message({
             showClose: true,
             message: '修改成功，请重新登录',
@@ -106,7 +105,7 @@ export default {
           this.showDialog = false;
           setTimeout(()=>{
             // 删除cookie，回到登录页面
-            userService.clearUserInfo();
+            this.$cookies.remove("session");
             this.$router.push('/login');
             this.sseSource.close();
           },800)

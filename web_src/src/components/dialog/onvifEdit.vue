@@ -81,7 +81,7 @@ export default {
       console.log(this.form);
       this.$axios({
         method: 'get',
-        url:`/api/onvif/rtsp`,
+        url:`api/onvif/rtsp`,
         params: {
           hostname: this.form.hostName,
           timeout: 3000,
@@ -90,7 +90,7 @@ export default {
         }
       }).then((res) => {
         console.log(res.data)
-        if (res.data.code === 0) {
+        if (res.data.code == 0) {
           if (res.data.data != null) {
             this.listChangeCallback(res.data.data)
           }else {

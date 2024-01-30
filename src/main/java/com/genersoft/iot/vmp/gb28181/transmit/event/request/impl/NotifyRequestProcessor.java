@@ -1,7 +1,6 @@
 package com.genersoft.iot.vmp.gb28181.transmit.event.request.impl;
 
-import com.alibaba.fastjson2.JSONObject;
-import com.genersoft.iot.vmp.conf.CivilCodeFileConf;
+import com.alibaba.fastjson.JSONObject;
 import com.genersoft.iot.vmp.conf.SipConfig;
 import com.genersoft.iot.vmp.conf.UserSetting;
 import com.genersoft.iot.vmp.gb28181.bean.*;
@@ -12,15 +11,14 @@ import com.genersoft.iot.vmp.gb28181.transmit.callback.DeferredResultHolder;
 import com.genersoft.iot.vmp.gb28181.transmit.cmd.impl.SIPCommander;
 import com.genersoft.iot.vmp.gb28181.transmit.event.request.ISIPRequestProcessor;
 import com.genersoft.iot.vmp.gb28181.transmit.event.request.SIPRequestProcessorParent;
+import com.genersoft.iot.vmp.gb28181.utils.Coordtransform;
 import com.genersoft.iot.vmp.gb28181.utils.NumericUtil;
 import com.genersoft.iot.vmp.gb28181.utils.SipUtils;
 import com.genersoft.iot.vmp.gb28181.utils.XmlUtil;
-import com.genersoft.iot.vmp.service.IDeviceChannelService;
 import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
 import com.genersoft.iot.vmp.storager.IVideoManagerStorage;
 import com.genersoft.iot.vmp.utils.DateUtil;
 import com.genersoft.iot.vmp.utils.redis.RedisUtil;
-import gov.nist.javax.sip.message.SIPRequest;
 import org.dom4j.DocumentException;
 import org.dom4j.Element;
 import org.slf4j.Logger;
@@ -30,7 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
-import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
 import javax.sip.InvalidArgumentException;
 import javax.sip.RequestEvent;
@@ -39,11 +37,10 @@ import javax.sip.header.FromHeader;
 import javax.sip.message.Response;
 import java.text.ParseException;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * SIP命令类型： NOTIFY请求,这是作为上级发送订阅请求后，设备才会响应的
+ * SIP命令类型： NOTIFY请求
  */
 @Component
 public class NotifyRequestProcessor extends SIPRequestProcessorParent implements InitializingBean, ISIPRequestProcessor {
@@ -74,22 +71,13 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 	@Autowired
 	private SIPProcessorObserver sipProcessorObserver;
 
-	@Autowired
-	private IDeviceChannelService deviceChannelService;
+	private boolean taskQueueHandlerRun = false;
 
-	@Autowired
-	private NotifyRequestForCatalogProcessor notifyRequestForCatalogProcessor;
-
-	@Autowired
-	private CivilCodeFileConf civilCodeFileConf;
-
-	private ConcurrentLinkedQueue<HandlerCatchData> taskQueue = new ConcurrentLinkedQueue<>();
+	private final ConcurrentLinkedQueue<HandlerCatchData> taskQueue = new ConcurrentLinkedQueue<>();
 
 	@Qualifier("taskExecutor")
 	@Autowired
 	private ThreadPoolTaskExecutor taskExecutor;
-
-	private int maxQueueCount = 30000;
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
@@ -101,58 +89,46 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 	public void process(RequestEvent evt) {
 		try {
 
-			if (taskQueue.size() >= userSetting.getMaxNotifyCountQueue()) {
-				responseAck((SIPRequest) evt.getRequest(), Response.BUSY_HERE, null, null);
-				logger.error("[notify] 待处理消息队列已满 {}，返回486 BUSY_HERE，消息不做处理", userSetting.getMaxNotifyCountQueue());
-				return;
-			}else {
-				responseAck((SIPRequest) evt.getRequest(), Response.OK, null, null);
+			taskQueue.offer(new HandlerCatchData(evt, null, null));
+			responseAck(evt, Response.OK);
+			if (!taskQueueHandlerRun) {
+				taskQueueHandlerRun = true;
+				taskExecutor.execute(()-> {
+							while (!taskQueue.isEmpty()) {
+								try {
+									HandlerCatchData take = taskQueue.poll();
+									Element rootElement = getRootElement(take.getEvt());
+									String cmd = XmlUtil.getText(rootElement, "CmdType");
+
+									if (CmdType.CATALOG.equals(cmd)) {
+										logger.info("接收到Catalog通知");
+										processNotifyCatalogList(take.getEvt());
+									} else if (CmdType.ALARM.equals(cmd)) {
+										logger.info("接收到Alarm通知");
+										processNotifyAlarm(take.getEvt());
+									} else if (CmdType.MOBILE_POSITION.equals(cmd)) {
+										logger.info("接收到MobilePosition通知");
+										processNotifyMobilePosition(take.getEvt());
+									} else {
+										logger.info("接收到消息：" + cmd);
+									}
+								} catch (DocumentException e) {
+									throw new RuntimeException(e);
+								}
+							}
+						taskQueueHandlerRun = false;
+						});
 			}
 
-		}catch (SipException | InvalidArgumentException | ParseException e) {
-			logger.error("未处理的异常 ", e);
-		}
-		boolean runed = !taskQueue.isEmpty();
-		logger.info("[notify] 待处理消息数量： {}", taskQueue.size());
-		taskQueue.offer(new HandlerCatchData(evt, null, null));
-		if (!runed) {
-			taskExecutor.execute(()-> {
-				while (!taskQueue.isEmpty()) {
-					try {
-						HandlerCatchData take = taskQueue.poll();
-						if (take == null) {
-							continue;
-						}
-						Element rootElement = getRootElement(take.getEvt());
-						if (rootElement == null) {
-							logger.error("处理NOTIFY消息时未获取到消息体,{}", take.getEvt().getRequest());
-							continue;
-						}
-						String cmd = XmlUtil.getText(rootElement, "CmdType");
 
-						if (CmdType.CATALOG.equals(cmd)) {
-							logger.info("接收到Catalog通知");
-							notifyRequestForCatalogProcessor.process(take.getEvt());
-						} else if (CmdType.ALARM.equals(cmd)) {
-							logger.info("接收到Alarm通知");
-							processNotifyAlarm(take.getEvt());
-						} else if (CmdType.MOBILE_POSITION.equals(cmd)) {
-							logger.info("接收到MobilePosition通知");
-							processNotifyMobilePosition(take.getEvt());
-						} else {
-							logger.info("接收到消息：" + cmd);
-						}
-					} catch (DocumentException e) {
-						logger.error("处理NOTIFY消息时错误", e);
-					}
-				}
-			});
+		} catch (SipException | InvalidArgumentException | ParseException e) {
+			e.printStackTrace();
 		}
 	}
 
 	/**
 	 * 处理MobilePosition移动位置Notify
-	 *
+	 * 
 	 * @param evt
 	 */
 	private void processNotifyMobilePosition(RequestEvent evt) {
@@ -162,45 +138,21 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 
 			// 回复 200 OK
 			Element rootElement = getRootElement(evt);
-			if (rootElement == null) {
-				logger.error("处理MobilePosition移动位置Notify时未获取到消息体,{}", evt.getRequest());
-				return;
-			}
 
 			MobilePosition mobilePosition = new MobilePosition();
 			mobilePosition.setCreateTime(DateUtil.getNow());
-
 			Element deviceIdElement = rootElement.element("DeviceID");
 			String channelId = deviceIdElement.getTextTrim().toString();
 			Device device = redisCatchStorage.getDevice(deviceId);
-
-			if (device == null) {
-				device = redisCatchStorage.getDevice(channelId);
-				if (device == null) {
-					// 根据通道id查询设备Id
-					List<Device> deviceList = deviceChannelService.getDeviceByChannelId(channelId);
-					if (deviceList.size() > 0) {
-						device = deviceList.get(0);
-					}
+			if (device != null) {
+				if (!StringUtils.isEmpty(device.getName())) {
+					mobilePosition.setDeviceName(device.getName());
 				}
 			}
-			if (device == null) {
-				logger.warn("[mobilePosition移动位置Notify] 未找到通道{}所属的设备", channelId);
-				return;
-			}
-			if (!ObjectUtils.isEmpty(device.getName())) {
-				mobilePosition.setDeviceName(device.getName());
-			}
-
-			mobilePosition.setDeviceId(device.getDeviceId());
+			mobilePosition.setDeviceId(XmlUtil.getText(rootElement, "DeviceID"));
 			mobilePosition.setChannelId(channelId);
 			String time = XmlUtil.getText(rootElement, "Time");
-			if (ObjectUtils.isEmpty(time)){
-				mobilePosition.setTime(DateUtil.getNow());
-			}else {
-				mobilePosition.setTime(SipUtils.parseTime(time));
-			}
-
+			mobilePosition.setTime(time);
 			mobilePosition.setLongitude(Double.parseDouble(XmlUtil.getText(rootElement, "Longitude")));
 			mobilePosition.setLatitude(Double.parseDouble(XmlUtil.getText(rootElement, "Latitude")));
 			if (NumericUtil.isDouble(XmlUtil.getText(rootElement, "Speed"))) {
@@ -218,10 +170,31 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 			} else {
 				mobilePosition.setAltitude(0.0);
 			}
-			logger.info("[收到移动位置订阅通知]：{}/{}->{}.{}", mobilePosition.getDeviceId(), mobilePosition.getChannelId(),
+			logger.info("[收到 移动位置订阅]：{}/{}->{}.{}", mobilePosition.getDeviceId(), mobilePosition.getChannelId(),
 					mobilePosition.getLongitude(), mobilePosition.getLatitude());
 			mobilePosition.setReportSource("Mobile Position");
-
+			// 默认来源坐标系为WGS-84处理
+			if ("WGS84".equals(device.getGeoCoordSys())) {
+				mobilePosition.setLongitudeWgs84(mobilePosition.getLongitude());
+				mobilePosition.setLatitudeWgs84(mobilePosition.getLatitude());
+				Double[] position = Coordtransform.WGS84ToGCJ02(mobilePosition.getLongitude(), mobilePosition.getLatitude());
+				mobilePosition.setLongitudeGcj02(position[0]);
+				mobilePosition.setLatitudeGcj02(position[1]);
+			}else if ("GCJ02".equals(device.getGeoCoordSys())) {
+				mobilePosition.setLongitudeGcj02(mobilePosition.getLongitude());
+				mobilePosition.setLatitudeGcj02(mobilePosition.getLatitude());
+				Double[] position = Coordtransform.GCJ02ToWGS84(mobilePosition.getLongitude(), mobilePosition.getLatitude());
+				mobilePosition.setLongitudeWgs84(position[0]);
+				mobilePosition.setLatitudeWgs84(position[1]);
+			}else {
+				mobilePosition.setLongitudeGcj02(0.00);
+				mobilePosition.setLatitudeGcj02(0.00);
+				mobilePosition.setLongitudeWgs84(0.00);
+				mobilePosition.setLatitudeWgs84(0.00);
+			}
+			if (userSetting.getSavePositionHistory()) {
+				storager.insertMobilePosition(mobilePosition);
+			}
 
 			// 更新device channel 的经纬度
 			DeviceChannel deviceChannel = new DeviceChannel();
@@ -229,23 +202,15 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 			deviceChannel.setChannelId(channelId);
 			deviceChannel.setLongitude(mobilePosition.getLongitude());
 			deviceChannel.setLatitude(mobilePosition.getLatitude());
+			deviceChannel.setLongitudeWgs84(mobilePosition.getLongitudeWgs84());
+			deviceChannel.setLatitudeWgs84(mobilePosition.getLatitudeWgs84());
+			deviceChannel.setLongitudeGcj02(mobilePosition.getLongitudeGcj02());
+			deviceChannel.setLatitudeGcj02(mobilePosition.getLatitudeGcj02());
 			deviceChannel.setGpsTime(mobilePosition.getTime());
-			deviceChannel = deviceChannelService.updateGps(deviceChannel, device);
-
-			mobilePosition.setLongitudeWgs84(deviceChannel.getLongitudeWgs84());
-			mobilePosition.setLatitudeWgs84(deviceChannel.getLatitudeWgs84());
-			mobilePosition.setLongitudeGcj02(deviceChannel.getLongitudeGcj02());
-			mobilePosition.setLatitudeGcj02(deviceChannel.getLatitudeGcj02());
-
-			if (userSetting.getSavePositionHistory()) {
-				storager.insertMobilePosition(mobilePosition);
-			}
-
 			storager.updateChannelPosition(deviceChannel);
-
 			// 发送redis消息。 通知位置信息的变化
 			JSONObject jsonObject = new JSONObject();
-			jsonObject.put("time", DateUtil.yyyy_MM_dd_HH_mm_ssToISO8601(mobilePosition.getTime()));
+			jsonObject.put("time", time);
 			jsonObject.put("serial", deviceId);
 			jsonObject.put("code", channelId);
 			jsonObject.put("longitude", mobilePosition.getLongitude());
@@ -255,13 +220,13 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 			jsonObject.put("speed", mobilePosition.getSpeed());
 			redisCatchStorage.sendMobilePositionMsg(jsonObject);
 		} catch (DocumentException  e) {
-			logger.error("未处理的异常 ", e);
+			e.printStackTrace();
 		}
 	}
 
 	/***
 	 * 处理alarm设备报警Notify
-	 *
+	 * 
 	 * @param evt
 	 */
 	private void processNotifyAlarm(RequestEvent evt) {
@@ -273,10 +238,6 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 			String deviceId = SipUtils.getUserIdFromFromHeader(fromHeader);
 
 			Element rootElement = getRootElement(evt);
-			if (rootElement == null) {
-				logger.error("处理alarm设备报警Notify时未获取到消息体{}", evt.getRequest());
-				return;
-			}
 			Element deviceIdElement = rootElement.element("DeviceID");
 			String channelId = deviceIdElement.getText().toString();
 
@@ -286,10 +247,6 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 				return;
 			}
 			rootElement = getRootElement(evt, device.getCharset());
-			if (rootElement == null) {
-				logger.warn("[ NotifyAlarm ] content cannot be null, {}", evt.getRequest());
-				return;
-			}
 			DeviceAlarm deviceAlarm = new DeviceAlarm();
 			deviceAlarm.setDeviceId(deviceId);
 			deviceAlarm.setAlarmPriority(XmlUtil.getText(rootElement, "AlarmPriority"));
@@ -318,46 +275,45 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 			logger.info("[收到Notify-Alarm]：{}/{}", device.getDeviceId(), deviceAlarm.getChannelId());
 			if ("4".equals(deviceAlarm.getAlarmMethod())) {
 				MobilePosition mobilePosition = new MobilePosition();
-				mobilePosition.setChannelId(channelId);
 				mobilePosition.setCreateTime(DateUtil.getNow());
 				mobilePosition.setDeviceId(deviceAlarm.getDeviceId());
 				mobilePosition.setTime(deviceAlarm.getAlarmTime());
 				mobilePosition.setLongitude(deviceAlarm.getLongitude());
 				mobilePosition.setLatitude(deviceAlarm.getLatitude());
 				mobilePosition.setReportSource("GPS Alarm");
-
+				if ("WGS84".equals(device.getGeoCoordSys())) {
+					mobilePosition.setLongitudeWgs84(mobilePosition.getLongitude());
+					mobilePosition.setLatitudeWgs84(mobilePosition.getLatitude());
+					Double[] position = Coordtransform.WGS84ToGCJ02(mobilePosition.getLongitude(), mobilePosition.getLatitude());
+					mobilePosition.setLongitudeGcj02(position[0]);
+					mobilePosition.setLatitudeGcj02(position[1]);
+				}else if ("GCJ02".equals(device.getGeoCoordSys())) {
+					mobilePosition.setLongitudeGcj02(mobilePosition.getLongitude());
+					mobilePosition.setLatitudeGcj02(mobilePosition.getLatitude());
+					Double[] position = Coordtransform.GCJ02ToWGS84(mobilePosition.getLongitude(), mobilePosition.getLatitude());
+					mobilePosition.setLongitudeWgs84(position[0]);
+					mobilePosition.setLatitudeWgs84(position[1]);
+				}else {
+					mobilePosition.setLongitudeGcj02(0.00);
+					mobilePosition.setLatitudeGcj02(0.00);
+					mobilePosition.setLongitudeWgs84(0.00);
+					mobilePosition.setLatitudeWgs84(0.00);
+				}
+				if (userSetting.getSavePositionHistory()) {
+					storager.insertMobilePosition(mobilePosition);
+				}
 				// 更新device channel 的经纬度
 				DeviceChannel deviceChannel = new DeviceChannel();
 				deviceChannel.setDeviceId(device.getDeviceId());
 				deviceChannel.setChannelId(channelId);
 				deviceChannel.setLongitude(mobilePosition.getLongitude());
 				deviceChannel.setLatitude(mobilePosition.getLatitude());
+				deviceChannel.setLongitudeWgs84(mobilePosition.getLongitudeWgs84());
+				deviceChannel.setLatitudeWgs84(mobilePosition.getLatitudeWgs84());
+				deviceChannel.setLongitudeGcj02(mobilePosition.getLongitudeGcj02());
+				deviceChannel.setLatitudeGcj02(mobilePosition.getLatitudeGcj02());
 				deviceChannel.setGpsTime(mobilePosition.getTime());
-
-				deviceChannel = deviceChannelService.updateGps(deviceChannel, device);
-
-				mobilePosition.setLongitudeWgs84(deviceChannel.getLongitudeWgs84());
-				mobilePosition.setLatitudeWgs84(deviceChannel.getLatitudeWgs84());
-				mobilePosition.setLongitudeGcj02(deviceChannel.getLongitudeGcj02());
-				mobilePosition.setLatitudeGcj02(deviceChannel.getLatitudeGcj02());
-
-				if (userSetting.getSavePositionHistory()) {
-					storager.insertMobilePosition(mobilePosition);
-				}
-
 				storager.updateChannelPosition(deviceChannel);
-				// 发送redis消息。 通知位置信息的变化
-				JSONObject jsonObject = new JSONObject();
-				jsonObject.put("time", DateUtil.yyyy_MM_dd_HH_mm_ssToISO8601(mobilePosition.getTime()));
-				jsonObject.put("serial", deviceChannel.getDeviceId());
-				jsonObject.put("code", deviceChannel.getChannelId());
-				jsonObject.put("longitude", mobilePosition.getLongitude());
-				jsonObject.put("latitude", mobilePosition.getLatitude());
-				jsonObject.put("altitude", mobilePosition.getAltitude());
-				jsonObject.put("direction", mobilePosition.getDirection());
-				jsonObject.put("speed", mobilePosition.getSpeed());
-				redisCatchStorage.sendMobilePositionMsg(jsonObject);
-
 			}
 			// TODO: 需要实现存储报警信息、报警分类
 
@@ -366,7 +322,96 @@ public class NotifyRequestProcessor extends SIPRequestProcessorParent implements
 				publisher.deviceAlarmEventPublish(deviceAlarm);
 			}
 		} catch (DocumentException e) {
-			logger.error("未处理的异常 ", e);
+			e.printStackTrace();
+		}
+	}
+
+	/***
+	 * 处理catalog设备目录列表Notify
+	 * 
+	 * @param evt
+	 */
+	private void processNotifyCatalogList(RequestEvent evt) {
+		try {
+			FromHeader fromHeader = (FromHeader) evt.getRequest().getHeader(FromHeader.NAME);
+			String deviceId = SipUtils.getUserIdFromFromHeader(fromHeader);
+
+			Device device = redisCatchStorage.getDevice(deviceId);
+			if (device == null || device.getOnline() == 0) {
+				logger.warn("[收到 目录订阅]：{}, 但是设备已经离线", (device != null ? device.getDeviceId():"" ));
+				return;
+			}
+			Element rootElement = getRootElement(evt, device.getCharset());
+			Element deviceListElement = rootElement.element("DeviceList");
+			if (deviceListElement == null) {
+				return;
+			}
+			Iterator<Element> deviceListIterator = deviceListElement.elementIterator();
+			if (deviceListIterator != null) {
+
+				// 遍历DeviceList
+				while (deviceListIterator.hasNext()) {
+					Element itemDevice = deviceListIterator.next();
+					Element channelDeviceElement = itemDevice.element("DeviceID");
+					if (channelDeviceElement == null) {
+						continue;
+					}
+					Element eventElement = itemDevice.element("Event");
+					String event;
+					if (eventElement == null) {
+						logger.warn("[收到 目录订阅]：{}, 但是Event为空, 设为默认值 ADD", (device != null ? device.getDeviceId():"" ));
+						event = CatalogEvent.ADD;
+					}else {
+						event = eventElement.getText().toUpperCase();
+					}
+					DeviceChannel channel = XmlUtil.channelContentHander(itemDevice, device);
+					channel.setDeviceId(device.getDeviceId());
+					logger.info("[收到 目录订阅]：{}/{}", device.getDeviceId(), channel.getChannelId());
+					switch (event) {
+						case CatalogEvent.ON:
+							// 上线
+							logger.info("收到来自设备【{}】的通道【{}】上线通知", device.getDeviceId(), channel.getChannelId());
+							storager.deviceChannelOnline(deviceId, channel.getChannelId());
+							break;
+						case CatalogEvent.OFF :
+							// 离线
+							logger.info("收到来自设备【{}】的通道【{}】离线通知", device.getDeviceId(), channel.getChannelId());
+							storager.deviceChannelOffline(deviceId, channel.getChannelId());
+							break;
+						case CatalogEvent.VLOST:
+							// 视频丢失
+							logger.info("收到来自设备【{}】的通道【{}】视频丢失通知", device.getDeviceId(), channel.getChannelId());
+							storager.deviceChannelOffline(deviceId, channel.getChannelId());
+							break;
+						case CatalogEvent.DEFECT:
+							// 故障
+							break;
+						case CatalogEvent.ADD:
+							// 增加
+							logger.info("收到来自设备【{}】的增加通道【{}】通知", device.getDeviceId(), channel.getChannelId());
+							storager.updateChannel(deviceId, channel);
+							break;
+						case CatalogEvent.DEL:
+							// 删除
+							logger.info("收到来自设备【{}】的删除通道【{}】通知", device.getDeviceId(), channel.getChannelId());
+							storager.delChannel(deviceId, channel.getChannelId());
+							break;
+						case CatalogEvent.UPDATE:
+							// 更新
+							logger.info("收到来自设备【{}】的更新通道【{}】通知", device.getDeviceId(), channel.getChannelId());
+							storager.updateChannel(deviceId, channel);
+							break;
+						default:
+							logger.warn("[ NotifyCatalog ] event not found ： {}", event );
+
+					}
+					// 转发变化信息
+					eventPublisher.catalogEventPublish(null, channel, event);
+
+				}
+			}
+		} catch (DocumentException e) {
+			e.printStackTrace();
 		}
 	}
 

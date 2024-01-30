@@ -127,10 +127,10 @@ export default {
     deletePlatformCommit: function(platform) {
         var that = this;
         that.$axios({
-          method: 'delete',
-          url:`/api/platform/delete/${platform.serverGBId}`
+		method: 'delete',
+		url:`/api/platform/delete/${platform.serverGBId}`
         }).then(function (res) {
-            if (res.data.code === 0) {
+            if (res.data == "success") {
                 that.$message({
                     showClose: true,
                     message: '删除成功',
@@ -143,8 +143,7 @@ export default {
         });
     },
     chooseChannel: function(platform) {
-        console.log("platform.name: " + platform.name)
-       this.$refs.chooseChannelDialog.openDialog(platform.serverGBId,platform.deviceGBId, platform.name, platform.catalogId, this.initData)
+       this.$refs.chooseChannelDialog.openDialog(platform.serverGBId, platform.name, platform.catalogId, this.initData)
     },
     initData: function() {
       this.getPlatformList();
@@ -164,11 +163,8 @@ export default {
       	method: 'get',
         url:`/api/platform/query/${that.count}/${that.currentPage}`
       }).then(function (res) {
-        if (res.data.code === 0) {
-          that.total = res.data.data.total;
-          that.platformList = res.data.data.list;
-        }
-
+        that.total = res.data.total;
+        that.platformList = res.data.list;
       }).catch(function (error) {
         console.log(error);
       });

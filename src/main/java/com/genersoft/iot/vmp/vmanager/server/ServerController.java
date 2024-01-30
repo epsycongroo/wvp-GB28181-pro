@@ -1,46 +1,44 @@
 package com.genersoft.iot.vmp.vmanager.server;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
-import com.genersoft.iot.vmp.common.SystemAllInfo;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.genersoft.iot.vmp.VManageBootstrap;
 import com.genersoft.iot.vmp.common.VersionPo;
+import com.genersoft.iot.vmp.conf.DynamicTask;
 import com.genersoft.iot.vmp.conf.SipConfig;
 import com.genersoft.iot.vmp.conf.UserSetting;
 import com.genersoft.iot.vmp.conf.VersionInfo;
-import com.genersoft.iot.vmp.conf.exception.ControllerException;
-import com.genersoft.iot.vmp.conf.security.JwtUtils;
-import com.genersoft.iot.vmp.media.zlm.SendRtpPortManager;
-import com.genersoft.iot.vmp.media.zlm.ZlmHttpHookSubscribe;
-import com.genersoft.iot.vmp.media.zlm.dto.IHookSubscribe;
 import com.genersoft.iot.vmp.media.zlm.dto.MediaServerItem;
-import com.genersoft.iot.vmp.service.*;
-import com.genersoft.iot.vmp.service.bean.MediaServerLoad;
-import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
-import com.genersoft.iot.vmp.vmanager.bean.ErrorCode;
-import com.genersoft.iot.vmp.vmanager.bean.ResourceBaseInfo;
-import com.genersoft.iot.vmp.vmanager.bean.ResourceInfo;
-import com.genersoft.iot.vmp.vmanager.bean.SystemConfigInfo;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.genersoft.iot.vmp.service.IMediaServerService;
+import com.genersoft.iot.vmp.utils.SpringBeanFactory;
+import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
+import gov.nist.javax.sip.SipStackImpl;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.util.ObjectUtils;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
+import javax.sip.ListeningPoint;
+import javax.sip.ObjectInUseException;
+import javax.sip.SipProvider;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 @SuppressWarnings("rawtypes")
-@Tag(name = "服务控制")
-
+@Api(tags = "服务控制")
+@CrossOrigin
 @RestController
 @RequestMapping("/api/server")
 public class ServerController {
 
     @Autowired
-    private ZlmHttpHookSubscribe zlmHttpHookSubscribe;
+    private ConfigurableApplicationContext context;
 
     @Autowired
     private IMediaServerService mediaServerService;
@@ -55,158 +53,193 @@ public class ServerController {
     private UserSetting userSetting;
 
     @Autowired
-    private IDeviceService deviceService;
-
-    @Autowired
-    private IDeviceChannelService channelService;
-
-    @Autowired
-    private IStreamPushService pushService;
-
-
-    @Autowired
-    private IStreamProxyService proxyService;
-
+    private DynamicTask dynamicTask;
 
     @Value("${server.port}")
     private int serverPort;
 
 
-    @Autowired
-    private IRedisCatchStorage redisCatchStorage;
-
-    @Autowired
-    private SendRtpPortManager sendRtpPortManager;
-
-
+    @ApiOperation("流媒体服务列表")
     @GetMapping(value = "/media_server/list")
     @ResponseBody
-    @Operation(summary = "流媒体服务列表", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    public List<MediaServerItem> getMediaServerList() {
-        return mediaServerService.getAll();
+    public WVPResult<List<MediaServerItem>> getMediaServerList(boolean detail){
+        WVPResult<List<MediaServerItem>> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        result.setData(mediaServerService.getAll());
+        return result;
     }
 
+    @ApiOperation("在线流媒体服务列表")
     @GetMapping(value = "/media_server/online/list")
     @ResponseBody
-    @Operation(summary = "在线流媒体服务列表", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    public List<MediaServerItem> getOnlineMediaServerList() {
-        return mediaServerService.getAllOnline();
+    public WVPResult<List<MediaServerItem>> getOnlineMediaServerList(){
+        WVPResult<List<MediaServerItem>> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        result.setData(mediaServerService.getAllOnline());
+        return result;
     }
 
+    @ApiOperation("获取流媒体服务")
     @GetMapping(value = "/media_server/one/{id}")
     @ResponseBody
-    @Operation(summary = "停止视频回放", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "id", description = "流媒体服务ID", required = true)
-    public MediaServerItem getMediaServer(@PathVariable String id) {
-        return mediaServerService.getOne(id);
+    public WVPResult<MediaServerItem> getMediaServer(@PathVariable String id){
+        WVPResult<MediaServerItem> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        result.setData(mediaServerService.getOne(id));
+        return result;
     }
 
-    @Operation(summary = "测试流媒体服务", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "ip", description = "流媒体服务IP", required = true)
-    @Parameter(name = "port", description = "流媒体服务HTT端口", required = true)
-    @Parameter(name = "secret", description = "流媒体服务secret", required = true)
+    @ApiOperation("测试流媒体服务")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="ip", value = "流媒体服务IP", dataTypeClass = String.class),
+            @ApiImplicitParam(name="port", value = "流媒体服务HTT端口", dataTypeClass = Integer.class),
+            @ApiImplicitParam(name="secret", value = "流媒体服务secret", dataTypeClass = String.class),
+    })
     @GetMapping(value = "/media_server/check")
     @ResponseBody
-    public MediaServerItem checkMediaServer(@RequestParam String ip, @RequestParam int port, @RequestParam String secret) {
+    public WVPResult<MediaServerItem> checkMediaServer(@RequestParam String ip, @RequestParam int port, @RequestParam String secret){
         return mediaServerService.checkMediaServer(ip, port, secret);
     }
 
-    @Operation(summary = "测试流媒体录像管理服务", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "ip", description = "流媒体服务IP", required = true)
-    @Parameter(name = "port", description = "流媒体服务HTT端口", required = true)
+    @ApiOperation("测试流媒体录像管理服务")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="ip", value = "流媒体服务IP", dataTypeClass = String.class),
+            @ApiImplicitParam(name="port", value = "流媒体服务HTT端口", dataTypeClass = Integer.class),
+            @ApiImplicitParam(name="secret", value = "流媒体服务secret", dataTypeClass = String.class),
+    })
     @GetMapping(value = "/media_server/record/check")
     @ResponseBody
-    public void checkMediaRecordServer(@RequestParam String ip, @RequestParam int port) {
+    public WVPResult<String> checkMediaRecordServer(@RequestParam String ip, @RequestParam int port){
         boolean checkResult = mediaServerService.checkMediaRecordServer(ip, port);
-        if (!checkResult) {
-            throw new ControllerException(ErrorCode.ERROR100.getCode(), "连接失败");
+        WVPResult<String> result = new WVPResult<>();
+        if (checkResult) {
+            result.setCode(0);
+            result.setMsg("success");
+
+        }else {
+            result.setCode(-1);
+            result.setMsg("连接失败");
         }
+        return result;
     }
 
-    @Operation(summary = "保存流媒体服务", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "mediaServerItem", description = "流媒体信息", required = true)
+    @ApiOperation("保存流媒体服务")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="mediaServerItem", value = "流媒体信息", dataTypeClass = MediaServerItem.class)
+    })
     @PostMapping(value = "/media_server/save")
     @ResponseBody
-    public void saveMediaServer(@RequestBody MediaServerItem mediaServerItem) {
+    public WVPResult<String> saveMediaServer(@RequestBody  MediaServerItem mediaServerItem){
         MediaServerItem mediaServerItemInDatabase = mediaServerService.getOne(mediaServerItem.getId());
 
         if (mediaServerItemInDatabase != null) {
-            mediaServerService.update(mediaServerItem);
-        } else {
-            mediaServerService.add(mediaServerItem);
+            if (StringUtils.isEmpty(mediaServerItemInDatabase.getSendRtpPortRange())
+                    && StringUtils.isEmpty(mediaServerItem.getSendRtpPortRange())){
+                mediaServerItem.setSendRtpPortRange("30000,30500");
+            }
+           mediaServerService.update(mediaServerItem);
+        }else {
+            if (StringUtils.isEmpty(mediaServerItem.getSendRtpPortRange())){
+                mediaServerItem.setSendRtpPortRange("30000,30500");
+            }
+            return mediaServerService.add(mediaServerItem);
         }
+
+        WVPResult<String> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        return result;
     }
 
-    @Operation(summary = "移除流媒体服务", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "id", description = "流媒体ID", required = true)
+    @ApiOperation("移除流媒体服务")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="id", value = "流媒体ID", dataTypeClass = String.class)
+    })
     @DeleteMapping(value = "/media_server/delete")
     @ResponseBody
-    public void deleteMediaServer(@RequestParam String id) {
-        if (mediaServerService.getOne(id) == null) {
-            throw new ControllerException(ErrorCode.ERROR100.getCode(), "未找到此节点");
+    public WVPResult<String> deleteMediaServer(@RequestParam  String id){
+        if (mediaServerService.getOne(id) != null) {
+            mediaServerService.delete(id);
+            mediaServerService.deleteDb(id);
+        }else {
+            WVPResult<String> result = new WVPResult<>();
+            result.setCode(-1);
+            result.setMsg("未找到此节点");
+            return result;
         }
-        mediaServerService.delete(id);
-        mediaServerService.deleteDb(id);
+        WVPResult<String> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        return result;
     }
 
 
-    @Operation(summary = "重启服务", security = @SecurityRequirement(name = JwtUtils.HEADER))
+
+    @ApiOperation("重启服务")
     @GetMapping(value = "/restart")
     @ResponseBody
-    public void restart() {
-//        taskExecutor.execute(()-> {
-//            try {
-//                Thread.sleep(3000);
-//                SipProvider up = (SipProvider) SpringBeanFactory.getBean("udpSipProvider");
-//                SipStackImpl stack = (SipStackImpl) up.getSipStack();
-//                stack.stop();
-//                Iterator listener = stack.getListeningPoints();
-//                while (listener.hasNext()) {
-//                    stack.deleteListeningPoint((ListeningPoint) listener.next());
-//                }
-//                Iterator providers = stack.getSipProviders();
-//                while (providers.hasNext()) {
-//                    stack.deleteSipProvider((SipProvider) providers.next());
-//                }
-//                VManageBootstrap.restart();
-//            } catch (InterruptedException | ObjectInUseException e) {
-//                throw new ControllerException(ErrorCode.ERROR100.getCode(), e.getMessage());
-//            }
-//        });
-    };
+    public Object restart(){
+        Thread restartThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(3000);
+                    SipProvider up = (SipProvider) SpringBeanFactory.getBean("udpSipProvider");
+                    SipStackImpl stack = (SipStackImpl)up.getSipStack();
+                    stack.stop();
+                    Iterator listener = stack.getListeningPoints();
+                    while (listener.hasNext()) {
+                        stack.deleteListeningPoint((ListeningPoint) listener.next());
+                    }
+                    Iterator providers = stack.getSipProviders();
+                    while (providers.hasNext()) {
+                        stack.deleteSipProvider((SipProvider) providers.next());
+                    }
+                    VManageBootstrap.restart();
+                } catch (InterruptedException ignored) {
+                } catch (ObjectInUseException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
 
-    @Operation(summary = "获取系统信息信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @GetMapping(value = "/system/configInfo")
-    @ResponseBody
-    public SystemConfigInfo getConfigInfo() {
-        SystemConfigInfo systemConfigInfo = new SystemConfigInfo();
-        systemConfigInfo.setVersion(versionInfo.getVersion());
-        systemConfigInfo.setSip(sipConfig);
-        systemConfigInfo.setAddOn(userSetting);
-        systemConfigInfo.setServerPort(serverPort);
-        return systemConfigInfo;
+        restartThread.setDaemon(false);
+        restartThread.start();
+        return "success";
     }
 
-    @Operation(summary = "获取版本信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
+    @ApiOperation("版本信息")
     @GetMapping(value = "/version")
     @ResponseBody
-    public VersionPo VersionPogetVersion() {
-        return versionInfo.getVersion();
+    public WVPResult<VersionPo> getVersion(){
+        WVPResult<VersionPo> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
+        result.setData(versionInfo.getVersion());
+        return result;
     }
 
+    @ApiOperation("配置信息")
     @GetMapping(value = "/config")
-    @Operation(summary = "获取配置信息")
-    @Parameter(name = "type", description = "配置类型（sip, base）", required = true)
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="type", value = "配置类型（sip, base）", dataTypeClass = String.class),
+    })
     @ResponseBody
-    public JSONObject getVersion(String type) {
+    public WVPResult<JSONObject> getVersion(String type){
+        WVPResult<JSONObject> result = new WVPResult<>();
+        result.setCode(0);
+        result.setMsg("success");
 
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("server.port", serverPort);
-        if (ObjectUtils.isEmpty(type)) {
+        if (StringUtils.isEmpty(type)) {
             jsonObject.put("sip", JSON.toJSON(sipConfig));
             jsonObject.put("base", JSON.toJSON(userSetting));
-        } else {
-            switch (type) {
+        }else {
+            switch (type){
                 case "sip":
                     jsonObject.put("sip", sipConfig);
                     break;
@@ -217,55 +250,38 @@ public class ServerController {
                     break;
             }
         }
-        return jsonObject;
-    }
-
-    @GetMapping(value = "/hooks")
-    @ResponseBody
-    @Operation(summary = "获取当前所有hook")
-    public List<IHookSubscribe> getHooks() {
-        return zlmHttpHookSubscribe.getAll();
-    }
-
-    @GetMapping(value = "/system/info")
-    @ResponseBody
-    @Operation(summary = "获取系统信息")
-    public SystemAllInfo getSystemInfo() {
-        SystemAllInfo systemAllInfo = redisCatchStorage.getSystemInfo();
-
-        return systemAllInfo;
-    }
-
-    @GetMapping(value = "/media_server/load")
-    @ResponseBody
-    @Operation(summary = "获取负载信息")
-    public List<MediaServerLoad> getMediaLoad() {
-        List<MediaServerLoad> result = new ArrayList<>();
-        List<MediaServerItem> allOnline = mediaServerService.getAllOnline();
-        if (allOnline.size() == 0) {
-            return result;
-        }else {
-            for (MediaServerItem mediaServerItem : allOnline) {
-                result.add(mediaServerService.getLoad(mediaServerItem));
-            }
-        }
+        result.setData(jsonObject);
         return result;
     }
 
-    @GetMapping(value = "/resource/info")
-    @ResponseBody
-    @Operation(summary = "获取负载信息")
-    public ResourceInfo getResourceInfo() {
-        ResourceInfo result = new ResourceInfo();
-        ResourceBaseInfo deviceInfo = deviceService.getOverview();
-        result.setDevice(deviceInfo);
-        ResourceBaseInfo channelInfo = channelService.getOverview();
-        result.setChannel(channelInfo);
-        ResourceBaseInfo pushInfo = pushService.getOverview();
-        result.setPush(pushInfo);
-        ResourceBaseInfo proxyInfo = proxyService.getOverview();
-        result.setProxy(proxyInfo);
-
-        return result;
-    }
+//    @ApiOperation("当前进行中的动态任务")
+//    @GetMapping(value = "/dynamicTask")
+//    @ResponseBody
+//    public WVPResult<JSONObject> getDynamicTask(){
+//        WVPResult<JSONObject> result = new WVPResult<>();
+//        result.setCode(0);
+//        result.setMsg("success");
+//
+//        JSONObject jsonObject = new JSONObject();
+//
+//        Set<String> allKeys = dynamicTask.getAllKeys();
+//        jsonObject.put("server.port", serverPort);
+//        if (StringUtils.isEmpty(type)) {
+//            jsonObject.put("sip", JSON.toJSON(sipConfig));
+//            jsonObject.put("base", JSON.toJSON(userSetting));
+//        }else {
+//            switch (type){
+//                case "sip":
+//                    jsonObject.put("sip", sipConfig);
+//                    break;
+//                case "base":
+//                    jsonObject.put("base", userSetting);
+//                    break;
+//                default:
+//                    break;
+//            }
+//        }
+//        result.setData(jsonObject);
+//        return result;
+//    }
 }

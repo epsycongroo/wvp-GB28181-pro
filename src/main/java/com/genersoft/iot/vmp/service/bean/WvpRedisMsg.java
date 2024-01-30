@@ -29,12 +29,12 @@ public class WvpRedisMsg {
      * 消息的ID
      */
     private String serial;
-    private String content;
+    private Object content;
 
     private final static String requestTag = "req";
     private final static String responseTag = "res";
 
-    public static WvpRedisMsg getRequestInstance(String fromId, String toId, String cmd, String serial, String content) {
+    public static WvpRedisMsg getRequestInstance(String fromId, String toId, String cmd, String serial, Object content) {
         WvpRedisMsg wvpRedisMsg = new WvpRedisMsg();
         wvpRedisMsg.setType(requestTag);
         wvpRedisMsg.setFromId(fromId);
@@ -51,7 +51,7 @@ public class WvpRedisMsg {
         return wvpRedisMsg;
     }
 
-    public static WvpRedisMsg getResponseInstance(String fromId, String toId, String cmd, String serial, String content) {
+    public static WvpRedisMsg getResponseInstance(String fromId, String toId, String cmd, String serial, Object content) {
         WvpRedisMsg wvpRedisMsg = new WvpRedisMsg();
         wvpRedisMsg.setType(responseTag);
         wvpRedisMsg.setFromId(fromId);
@@ -106,11 +106,11 @@ public class WvpRedisMsg {
         this.cmd = cmd;
     }
 
-    public String getContent() {
+    public Object getContent() {
         return content;
     }
 
-    public void setContent(String content) {
+    public void setContent(Object content) {
         this.content = content;
     }
 }

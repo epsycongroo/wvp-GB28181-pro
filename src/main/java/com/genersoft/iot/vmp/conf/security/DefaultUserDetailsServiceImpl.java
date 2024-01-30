@@ -1,9 +1,9 @@
 package com.genersoft.iot.vmp.conf.security;
 
-import com.alibaba.excel.util.StringUtils;
 import com.genersoft.iot.vmp.conf.security.dto.LoginUser;
 import com.genersoft.iot.vmp.service.IUserService;
 import com.genersoft.iot.vmp.storager.dao.dto.User;
+import com.github.xiaoymin.knife4j.core.util.StrUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +27,7 @@ public class DefaultUserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        if (StringUtils.isBlank(username)) {
+        if (StrUtil.isBlank(username)) {
             logger.info("登录用户：{} 不存在", username);
             throw new UsernameNotFoundException("登录用户：" + username + " 不存在");
         }
@@ -42,10 +42,6 @@ public class DefaultUserDetailsServiceImpl implements UserDetailsService {
         user.setPassword(password);
         return new LoginUser(user, LocalDateTime.now());
     }
-
-
-
-
 
 
 }

@@ -5,13 +5,11 @@
 </template>
 
 <script>
-import  userService from './components/service/UserService'
 export default {
   name: 'app',
   data(){
     return {
       isLogin: false,
-      excludeLoginCheck: ["/play/wasm", "/play/rtc"],
       userInfo: { //保存用户信息
         nick: null,
         ulevel: null,
@@ -21,30 +19,42 @@ export default {
     }
   },
   created() {
-    if (userService.getToken() == null){
-      console.log(22222)
-      console.log(this.$route.path)
-      try {
-        if (this.excludeLoginCheck && this.excludeLoginCheck.length > 0) {
-          for (let i = 0; i < this.excludeLoginCheck.length; i++) {
-            if (this.$route.path.startsWith(this.excludeLoginCheck[i])){
-              return;
-            }
-          }
-        }
-      }catch (e) {
-        console.error(e)
-      }
+    if(!this.$cookies.get("session")){
       //如果没有登录状态则跳转到登录页
       this.$router.push('/login');
     }
   },
-
+  //监听路由检查登录
+  watch:{
+    "$route" : 'checkLogin'
+  },
   mounted(){
     //组件开始挂载时获取用户信息
     // this.getUserInfo();
   },
   methods: {
+    //请求用户的一些信息
+    getUserInfo(){
+      var userinfo = this.$cookies.get("session");
+    },
+    checkLogin(){
+      //检查是否存在session
+      //cookie操作方法在源码里有或者参考网上的即可
+      if(!this.$cookies.get("session")){
+        //如果没有登录状态则跳转到登录页
+        this.$router.push('/login');
+      }
+    },
+    getCookie: function (cname) {
+      var name = cname + "=";
+      var ca = document.cookie.split(';');
+      for (var i = 0; i < ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1);
+        if (c.indexOf(name) != -1) return c.substring(name.length, c.length);
+      }
+      return "";
+    }
   },
   components: {}
 };

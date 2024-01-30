@@ -35,7 +35,6 @@
 
 <script>
 import crypto from 'crypto'
-import userService from "./service/UserService";
 export default {
   name: 'Login',
   data(){
@@ -67,6 +66,10 @@ export default {
 
   	//登录请求
   	toLogin(){
+
+  		//一般要跟后端了解密码的加密规则
+  		//这里例子用的哈希算法来自./js/sha1.min.js
+
   		//需要想后端发送的登录参数
   		let loginParam = {
   			username: this.username,
@@ -75,21 +78,15 @@ export default {
       var that = this;
       //设置在登录状态
       this.isLoging = true;
-      let timeoutTask = setTimeout(()=>{
-        that.$message.error("登录超时");
-        that.isLoging = false;
-      }, 1000)
 
       this.$axios({
       	method: 'get',
         url:"/api/user/login",
         params: loginParam
       }).then(function (res) {
-        window.clearTimeout(timeoutTask)
-        console.log(res);
-        console.log("登录成功");
-          if (res.data.code === 0 ) {
-            userService.setUser(res.data.data)
+        console.log(JSON.stringify(res));
+          if (res.data.code == 0 && res.data.msg == "success") {
+            that.$cookies.set("session", {"username": that.username}) ;
             //登录成功后
             that.cancelEnterkeyDefaultAction();
             that.$router.push('/');
@@ -102,11 +99,17 @@ export default {
               });
           }
       }).catch(function (error) {
-        console.log(error)
-        window.clearTimeout(timeoutTask)
         that.$message.error(error.response.data.msg);
         that.isLoging = false;
       });
+    },
+    setCookie: function (cname, cvalue, exdays) {
+      var d = new Date();
+      d.setTime(d.getTime() + (exdays * 24 * 60 * 60 * 1000));
+      var expires = "expires=" + d.toUTCString();
+      console.info(cname + "=" + cvalue + "; " + expires);
+      document.cookie = cname + "=" + cvalue + "; " + expires;
+      console.info(document.cookie);
     },
     cancelEnterkeyDefaultAction: function() {
         document.onkeydown = function(e) {

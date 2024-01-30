@@ -6,7 +6,19 @@
         <el-progress :percentage="percentage"></el-progress>
       </el-col>
       <el-col :span="6" >
-        <el-button icon="el-icon-download" v-if="downloadFile" size="mini" title="点击下载" @click="downloadFileClientEvent()">下载</el-button>
+<!--       <el-dropdown size="mini" title="播放倍速" style="margin-left: 1px;" @command="gbScale">-->
+<!--         <el-button-group>-->
+<!--           <el-button size="mini" style="width: 100%">-->
+<!--             {{scale}}倍速 <i class="el-icon-arrow-down el-icon&#45;&#45;right"></i>-->
+<!--           </el-button>-->
+<!--         </el-button-group>-->
+<!--        <el-dropdown-menu  slot="dropdown">-->
+<!--          <el-dropdown-item command="1">1倍速</el-dropdown-item>-->
+<!--          <el-dropdown-item command="2">2倍速</el-dropdown-item>-->
+<!--          <el-dropdown-item command="4">4倍速</el-dropdown-item>-->
+<!--        </el-dropdown-menu>-->
+<!--      </el-dropdown>-->
+        <el-button icon="el-icon-download" v-if="percentage < 100" size="mini" title="点击下载可将以缓存部分下载到本地" @click="download()">停止缓存并下载</el-button>
       </el-col>
     </el-row>
   </el-dialog>
@@ -21,12 +33,12 @@ import moment from "moment";
 export default {
     name: 'recordDownload',
     created() {
-      window.addEventListener('beforeunload', this.stopDownloadRecord)
+
 
     },
     data() {
         return {
-          title: "下载中...",
+          title: "四倍速下载中...",
           deviceId: "",
           channelId: "",
           app: "",
@@ -38,8 +50,7 @@ export default {
           streamInfo: null,
           taskId: null,
           getProgressRun: false,
-          timer: null,
-          downloadFile: null,
+          getProgressForFileRun: false,
 
         };
     },
@@ -55,12 +66,12 @@ export default {
             this.percentage = 0.0;
             this.getProgressTimer()
         },
-        getProgressTimer: function (){
+        getProgressTimer(){
           if (!this.getProgressRun) {
             return;
           }
           if (this.percentage == 100 ) {
-
+            this.getFileDownload();
             return;
           }
           setTimeout( ()=>{
@@ -73,52 +84,43 @@ export default {
             method: 'get',
             url: `/api/gb_record/download/progress/${this.deviceId}/${this.channelId}/${this.stream}`
           }).then((res)=> {
-              if (res.data.code === 0) {
-                this.streamInfo = res.data.data;
-                if (parseFloat(res.data.progress) == 1) {
-                  this.percentage = 100;
-                }else {
-                  this.percentage = (parseFloat(res.data.data.progress)*100).toFixed(1);
-                }
-                if (this.streamInfo.downLoadFilePath) {
-                  if (location.protocol === "https:") {
-                    this.downloadFile = this.streamInfo.downLoadFilePath.httpsPath;
-                  }else {
-                    this.downloadFile = this.streamInfo.downLoadFilePath.httpPath;
-                  }
-                  this.getProgressRun = false;
-                  this.downloadFileClientEvent()
-                }
-                if (callback)callback();
+              console.log(res)
+              console.log(res.data.progress)
+              this.streamInfo = res.data;
+              if (parseFloat(res.data.progress) == 1) {
+                this.percentage = 100;
               }else {
-                this.$message({
-                  showClose: true,
-                  message: res.data.msg,
-                  type: "error",
-                });
-                this.close();
+                this.percentage = (res.data.progress*100).toFixed(1);
               }
-
+              if (callback)callback();
           }).catch((e) =>{
-            console.log(e)
+
           });
         },
         close: function (){
-          if (this.streamInfo.progress < 1) {
+          if (this.streamInfo.progress < 100) {
             this.stopDownloadRecord();
-          }
-
-          if (this.timer !== null) {
-            window.clearTimeout(this.timer);
-            this.timer = null;
           }
           this.showDialog=false;
           this.getProgressRun = false;
+          this.getProgressForFileRun = false;
         },
         gbScale: function (scale){
           this.scale = scale;
         },
-
+        download: function (){
+          this.getProgressRun = false;
+          if (this.streamInfo != null ) {
+            if (this.streamInfo.progress < 1) {
+              // 发送停止缓存
+              this.stopDownloadRecord((res)=>{
+                  this.getFileDownload()
+              })
+            }else {
+              this.getFileDownload()
+            }
+          }
+        },
         stopDownloadRecord: function (callback) {
           this.$axios({
             method: 'get',
@@ -127,24 +129,64 @@ export default {
             if (callback) callback(res)
           });
         },
-      downloadFileClientEvent: function (){
-        // window.open(this.downloadFile )
-
-        let x = new XMLHttpRequest();
-        x.open("GET", this.downloadFile, true);
-        x.responseType = 'blob';
-        x.onload=(e)=> {
-          let url = window.URL.createObjectURL(x.response)
-          let a = document.createElement('a');
-          a.href = url
-          a.download = this.deviceId + "-" + this.channelId + ".mp4";
-          a.click()
+        getFileDownload: function (){
+          this.$axios({
+            method: 'get',
+            url:`/record_proxy/${this.mediaServerId}/api/record/file/download/task/add`,
+            params: {
+              app: this.app,
+              stream: this.stream,
+              startTime: null,
+              endTime: null,
+            }
+          }).then((res) =>{
+            if (res.data.code === 0 && res.data.msg === "success") {
+              // 查询进度
+              this.title = "录像文件处理中..."
+              this.taskId = res.data.data;
+              this.percentage = 0.0;
+              this.getProgressForFileRun = true;
+              this.getProgressForFileTimer();
+            }
+          }).catch(function (error) {
+            console.log(error);
+          });
+        },
+        getProgressForFileTimer: function (){
+          if (!this.getProgressForFileRun || this.percentage == 100) {
+            return;
+          }
+          setTimeout( ()=>{
+            if (!this.showDialog) return;
+            this.getProgressForFile(this.getProgressForFileTimer())
+          }, 1000)
+        },
+        getProgressForFile: function (callback){
+          this.$axios({
+            method: 'get',
+            url:`/record_proxy/${this.mediaServerId}/api/record/file/download/task/list`,
+            params: {
+              app: this.app,
+              stream: this.stream,
+              taskId: this.taskId,
+              isEnd: true,
+            }
+          }).then((res) => {
+            console.log(res)
+            if (res.data.code == 0) {
+                this.percentage = parseFloat(res.data.data.percentage)*100
+                 if (res.data.data[0].percentage === '1') {
+                   this.getProgressForFileRun = false;
+                   window.open(res.data.data[0].downloadFile)
+                   this.close();
+                 }else {
+                   if (callback)callback()
+                 }
+            }
+          }).catch(function (error) {
+            console.log(error);
+          });
         }
-        x.send();
-      }
-    },
-    destroyed() {
-      window.removeEventListener('beforeunload', this.stopDownloadRecord)
     }
 };
 </script>

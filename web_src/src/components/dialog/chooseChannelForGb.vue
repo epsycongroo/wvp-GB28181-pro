@@ -1,5 +1,5 @@
 <template>
-<div id="chooseChannelForGb" v-loading="loading">
+<div id="chooseChannelForGb" >
   <div style="font-size: 17px; color: #606060; white-space: nowrap; line-height: 30px; font-family: monospace;">
     <span v-if="catalogId == null">{{catalogName}}的国标通道</span>
     <span v-if="catalogId != null">{{catalogName}}({{catalogId}})的国标通道</span>
@@ -18,10 +18,8 @@
             <el-option label="在线" value="true"></el-option>
             <el-option label="离线" value="false"></el-option>
         </el-select>
-     <el-button v-if="catalogId !== null" icon="el-icon-delete" size="mini" :disabled="gbChannels.length === 0 || multipleSelection.length === 0" type="danger" @click="batchDel">批量移除</el-button>
-     <el-button v-if="catalogId === null" icon="el-icon-plus" size="mini" :disabled="gbChannels.length === 0 || multipleSelection.length === 0" @click="batchAdd">批量添加</el-button>
-     <el-button v-if="catalogId === null" icon="el-icon-plus" size="mini" @click="add()">全部添加</el-button>
-     <el-button v-if="catalogId !== null" type="danger" icon="el-icon-delete" size="mini" @click="remove()">全部移除</el-button>
+     <el-button v-if="catalogId !== null" icon="el-icon-delete" size="mini" style="margin-right: 1rem;" :disabled="gbChannels.length === 0 || multipleSelection.length === 0" type="danger" @click="batchDel">批量移除</el-button>
+     <el-button v-if="catalogId === null" icon="el-icon-plus" size="mini" style="margin-right: 1rem;" :disabled="gbChannels.length === 0 || multipleSelection.length === 0" @click="batchAdd">批量添加</el-button>
     </div>
 
     <el-table ref="gbChannelsTable" :data="gbChannels" border style="width: 100%" :height="winHeight" :row-key="(row)=> row.deviceId + row.channelId" @selection-change="handleSelectionChange">
@@ -79,7 +77,6 @@ export default {
     },
     data() {
         return {
-            loading: false,
             gbChannels: [],
             gbChoosechannel:{},
             searchSrt: "",
@@ -118,65 +115,40 @@ export default {
             this.initData();
         },
         add: function (row) {
-          let all = typeof(row) === "undefined"
-
           this.getCatalogFromUser((catalogId)=> {
-            let task = null;
             this.$axios({
               method:"post",
               url:"/api/platform/update_channel_for_gb",
               data:{
                 platformId:  this.platformId,
-                all: all,
-                channelReduces: all?[]:[row],
+                channelReduces: [row],
                 catalogId: catalogId
               }
             }).then((res)=>{
               console.log("保存成功")
-              window.clearTimeout(task);
-              this.loading = false;
-              this.getChannelList();
-            }).catch((error)=> {
-              window.clearTimeout(task);
-              this.loading = false;
-              console.log(error);
-            });
-            task= setTimeout(()=>{
-              this.loading = true;
-            }, 200)
-          })
-
-
-        },
-        remove: function (row) {
-          let all = typeof(row) === "undefined"
-          this.$confirm(`确定移除${all?"所有通道":""}吗？`, '提示', {
-            dangerouslyUseHTMLString: true,
-            confirmButtonText: '确定',
-            cancelButtonText: '取消',
-            type: 'warning'
-          }).then(() => {
-            console.log(row)
-
-            this.$axios({
-              method:"delete",
-              url:"/api/platform/del_channel_for_gb",
-              data:{
-                platformId:  this.platformId,
-                all: all,
-                channelReduces: all?[]:[row],
-              }
-            }).then((res)=>{
-              console.log("移除成功")
               this.getChannelList();
             }).catch(function (error) {
               console.log(error);
             });
-          }).catch(() => {
+          })
 
+        },
+        remove: function (row) {
+          console.log(row)
+
+          this.$axios({
+            method:"delete",
+            url:"/api/platform/del_channel_for_gb",
+            data:{
+              platformId:  this.platformId,
+              channelReduces: [row]
+            }
+          }).then((res)=>{
+            console.log("移除成功")
+            this.getChannelList();
+          }).catch(function (error) {
+            console.log(error);
           });
-
-
         },
         // checkedChange: function (val) {
         //     let that = this;
@@ -271,16 +243,15 @@ export default {
                     }
                 })
                 .then(function (res) {
-                  if (res.data.code === 0 ) {
-                    that.total = res.data.data.total;
-                    that.gbChannels = res.data.data.list;
+                    that.total = res.data.total;
+                    that.gbChannels = res.data.list;
                     that.gbChoosechannel = {};
-                  }
-                  // 防止出现表格错位
-                  that.$nextTick(() => {
-                      that.$refs.gbChannelsTable.doLayout();
-                      that.eventEnable = true;
-                  })
+                    // 防止出现表格错位
+                    that.$nextTick(() => {
+                        that.$refs.gbChannelsTable.doLayout();
+                        that.eventEnable = true;
+                    })
+                    console.log(that.gbChoosechannel)
                 })
                 .catch(function (error) {
                     console.log(error);

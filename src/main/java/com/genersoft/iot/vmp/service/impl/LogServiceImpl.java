@@ -1,6 +1,5 @@
 package com.genersoft.iot.vmp.service.impl;
 
-import com.baomidou.dynamic.datasource.annotation.DS;
 import com.genersoft.iot.vmp.gb28181.bean.DeviceAlarm;
 import com.genersoft.iot.vmp.service.ILogService;
 import com.genersoft.iot.vmp.storager.dao.LogMapper;
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 @Service
-@DS("master")
 public class LogServiceImpl implements ILogService {
 
     @Autowired

@@ -77,19 +77,9 @@ public class SendRtpItem {
     private String serverId;
 
     /**
-     *  invite 的 callId
+     *  invite的callId
      */
     private String CallId;
-
-    /**
-     *  invite 的 fromTag
-     */
-    private String fromTag;
-
-    /**
-     *  invite 的 toTag
-     */
-    private String toTag;
 
     /**
      * 发送时，rtp的pt（uint8_t）,不传时默认为96
@@ -107,15 +97,13 @@ public class SendRtpItem {
     private boolean onlyAudio = false;
 
     /**
-     * 是否开启rtcp保活
-     */
-    private boolean rtcp = false;
-
-
-    /**
      * 播放类型
      */
     private InviteStreamType playType;
+
+    private byte[] transaction;
+
+    private byte[] dialog;
 
     public String getIp() {
         return ip;
@@ -237,6 +225,22 @@ public class SendRtpItem {
         this.playType = playType;
     }
 
+    public byte[] getTransaction() {
+        return transaction;
+    }
+
+    public void setTransaction(byte[] transaction) {
+        this.transaction = transaction;
+    }
+
+    public byte[] getDialog() {
+        return dialog;
+    }
+
+    public void setDialog(byte[] dialog) {
+        this.dialog = dialog;
+    }
+
     public int getPt() {
         return pt;
     }
@@ -267,29 +271,5 @@ public class SendRtpItem {
 
     public void setServerId(String serverId) {
         this.serverId = serverId;
-    }
-
-    public String getFromTag() {
-        return fromTag;
-    }
-
-    public void setFromTag(String fromTag) {
-        this.fromTag = fromTag;
-    }
-
-    public String getToTag() {
-        return toTag;
-    }
-
-    public void setToTag(String toTag) {
-        this.toTag = toTag;
-    }
-
-    public boolean isRtcp() {
-        return rtcp;
-    }
-
-    public void setRtcp(boolean rtcp) {
-        this.rtcp = rtcp;
     }
 }

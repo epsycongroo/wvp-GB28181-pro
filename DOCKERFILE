@@ -33,7 +33,7 @@ WORKDIR /home
 
 RUN      git clone https://gitee.com/pan648540858/maven.git && \
          cp maven/settings.xml /usr/share/maven/conf/ && \
-         git clone https://gitee.com/pan648540858/wvp-GB28181.git && \
+         git clone https://gitee.com/pan648540858/wvp-GB28181-pro.git && \
          git clone https://gitee.com/pan648540858/wvp-pro-assist.git
          # 编译前端界面
 WORKDIR /home/wvp-GB28181/web_src
@@ -87,7 +87,11 @@ RUN     echo '#!/bin/bash' > run.sh && \
         echo 'nohup java -jar *.jar --userSettings.record=/opt/media/www/record/ &' >> run.sh && \
         echo 'nohup /opt/media/MediaServer -d -m 3 &' >> run.sh && \
         echo 'cd /opt/wvp' >> run.sh && \
+<<<<<<< HEAD
+        echo 'if [ ${WVP_CONFIG} ]; then' >> run.sh && \
+=======
         echo 'if [-n "${WVP_CONFIG}"]; then' >> run.sh && \
+>>>>>>> 0b1cae75fe601bacc1b610bcd4f0c58a365e06e3
         echo '        java -jar *.jar --spring.config.location=/opt/wvp/config/application.yml --media.record-assist-port=18081 ${WVP_CONFIG}' >> run.sh && \
         echo 'else' >> run.sh && \
         echo '        java -jar *.jar --spring.config.location=/opt/wvp/config/application.yml --media.record-assist-port=18081 --media.ip=127.0.0.1 --media.sdp-ip=${WVP_IP} --sip.ip=${WVP_IP} --media.stream-ip=${WVP_IP}' >> run.sh  && \

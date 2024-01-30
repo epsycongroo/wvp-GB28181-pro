@@ -1,16 +1,8 @@
 package com.genersoft.iot.vmp.gb28181.bean;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-
 public class PlatformGbStream {
-
-    @Schema(description = "ID")
-    private int gbStreamId;
-
-    @Schema(description = "平台ID")
+    private Integer gbStreamId;
     private String platformId;
-
-    @Schema(description = "目录ID")
     private String catalogId;
 
     public Integer getGbStreamId() {

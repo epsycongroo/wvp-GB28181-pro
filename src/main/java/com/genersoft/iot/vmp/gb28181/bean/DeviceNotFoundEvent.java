@@ -4,9 +4,6 @@ import javax.sip.Dialog;
 import java.util.EventObject;
 
 public class DeviceNotFoundEvent extends EventObject {
-
-    private String callId;
-
     /**
      * Constructs a prototypical Event.
      *
@@ -17,11 +14,8 @@ public class DeviceNotFoundEvent extends EventObject {
         super(dialog);
     }
 
-    public String getCallId() {
-        return callId;
-    }
 
-    public void setCallId(String callId) {
-        this.callId = callId;
+    public Dialog getDialog() {
+        return (Dialog)super.getSource();
     }
 }

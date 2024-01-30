@@ -2,12 +2,9 @@ package com.genersoft.iot.vmp.conf;
 
 import com.genersoft.iot.vmp.media.zlm.dto.MediaServerItem;
 import com.genersoft.iot.vmp.utils.DateUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
-import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -15,10 +12,7 @@ import java.util.regex.Pattern;
 
 
 @Configuration("mediaConfig")
-@Order(0)
 public class MediaConfig{
-
-    private final static Logger logger = LoggerFactory.getLogger(MediaConfig.class);
 
     // 修改必须配置，不再支持自动获取
     @Value("${media.id}")
@@ -27,7 +21,7 @@ public class MediaConfig{
     @Value("${media.ip}")
     private String ip;
 
-    @Value("${media.hook-ip:}")
+    @Value("${media.hook-ip:${sip.ip}}")
     private String hookIp;
 
     @Value("${sip.ip}")
@@ -69,23 +63,21 @@ public class MediaConfig{
     @Value("${media.secret}")
     private String secret;
 
+    @Value("${media.stream-none-reader-delay-ms:10000}")
+    private int streamNoneReaderDelayMS = 10000;
+
     @Value("${media.rtp.enable}")
     private boolean rtpEnable;
 
     @Value("${media.rtp.port-range}")
     private String rtpPortRange;
 
+
     @Value("${media.rtp.send-port-range}")
-    private String rtpSendPortRange;
+    private String sendRtpPortRange;
 
     @Value("${media.record-assist-port:0}")
     private Integer recordAssistPort = 0;
-
-    @Value("${media.record-day:7}")
-    private Integer recordDay;
-
-    @Value("${media.record-path:}")
-    private String recordPath;
 
     public String getId() {
         return id;
@@ -96,8 +88,8 @@ public class MediaConfig{
     }
 
     public String getHookIp() {
-        if (ObjectUtils.isEmpty(hookIp)){
-            return sipIp.split(",")[0];
+        if (StringUtils.isEmpty(hookIp)){
+            return sipIp;
         }else {
             return hookIp;
         }
@@ -153,6 +145,10 @@ public class MediaConfig{
         return secret;
     }
 
+    public int getStreamNoneReaderDelayMS() {
+        return streamNoneReaderDelayMS;
+    }
+
     public boolean isRtpEnable() {
         return rtpEnable;
     }
@@ -166,7 +162,7 @@ public class MediaConfig{
     }
 
     public String getSdpIp() {
-        if (ObjectUtils.isEmpty(sdpIp)){
+        if (StringUtils.isEmpty(sdpIp)){
             return ip;
         }else {
             if (isValidIPAddress(sdpIp)) {
@@ -177,7 +173,7 @@ public class MediaConfig{
                 try {
                     hostAddress = InetAddress.getByName(sdpIp).getHostAddress();
                 } catch (UnknownHostException e) {
-                    logger.error("[获取SDP IP]: 域名解析失败");
+                    throw new RuntimeException(e);
                 }
                 return hostAddress;
             }
@@ -185,7 +181,7 @@ public class MediaConfig{
     }
 
     public String getStreamIp() {
-        if (ObjectUtils.isEmpty(streamIp)){
+        if (StringUtils.isEmpty(streamIp)){
             return ip;
         }else {
             return streamIp;
@@ -194,6 +190,10 @@ public class MediaConfig{
 
     public String getSipDomain() {
         return sipDomain;
+    }
+
+    public String getSendRtpPortRange() {
+        return sendRtpPortRange;
     }
 
     public MediaServerItem getMediaSerItem(){
@@ -213,43 +213,17 @@ public class MediaConfig{
         mediaServerItem.setRtspSSLPort(rtspSSLPort);
         mediaServerItem.setAutoConfig(autoConfig);
         mediaServerItem.setSecret(secret);
+        mediaServerItem.setStreamNoneReaderDelayMS(streamNoneReaderDelayMS);
         mediaServerItem.setRtpEnable(rtpEnable);
         mediaServerItem.setRtpPortRange(rtpPortRange);
-        mediaServerItem.setSendRtpPortRange(rtpSendPortRange);
+        mediaServerItem.setSendRtpPortRange(sendRtpPortRange);
         mediaServerItem.setRecordAssistPort(recordAssistPort);
-        mediaServerItem.setHookAliveInterval(30.00f);
-        mediaServerItem.setRecordDay(recordDay);
-        if (recordPath != null) {
-            mediaServerItem.setRecordPath(recordPath);
-        }
+        mediaServerItem.setHookAliveInterval(120);
+
         mediaServerItem.setCreateTime(DateUtil.getNow());
         mediaServerItem.setUpdateTime(DateUtil.getNow());
 
         return mediaServerItem;
-    }
-
-    public Integer getRecordDay() {
-        return recordDay;
-    }
-
-    public void setRecordDay(Integer recordDay) {
-        this.recordDay = recordDay;
-    }
-
-    public String getRecordPath() {
-        return recordPath;
-    }
-
-    public void setRecordPath(String recordPath) {
-        this.recordPath = recordPath;
-    }
-
-    public String getRtpSendPortRange() {
-        return rtpSendPortRange;
-    }
-
-    public void setRtpSendPortRange(String rtpSendPortRange) {
-        this.rtpSendPortRange = rtpSendPortRange;
     }
 
     private boolean isValidIPAddress(String ipAddress) {
@@ -258,4 +232,5 @@ public class MediaConfig{
         }
         return false;
     }
+
 }

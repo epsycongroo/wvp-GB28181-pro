@@ -19,8 +19,6 @@ public class LoginUser implements UserDetails, CredentialsContainer {
      */
     private User user;
 
-    private String accessToken;
-
 
     /**
      * 登录时间
@@ -101,11 +99,4 @@ public class LoginUser implements UserDetails, CredentialsContainer {
     }
 
 
-    public String getAccessToken() {
-        return accessToken;
-    }
-
-    public void setAccessToken(String accessToken) {
-        this.accessToken = accessToken;
-    }
 }

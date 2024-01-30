@@ -1,32 +1,30 @@
 package com.genersoft.iot.vmp.media.zlm;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.genersoft.iot.vmp.conf.DynamicTask;
 import com.genersoft.iot.vmp.conf.MediaConfig;
 import com.genersoft.iot.vmp.gb28181.event.EventPublisher;
-import com.genersoft.iot.vmp.media.zlm.dto.HookSubscribeFactory;
-import com.genersoft.iot.vmp.media.zlm.dto.HookSubscribeForServerStarted;
 import com.genersoft.iot.vmp.media.zlm.dto.MediaServerItem;
-import com.genersoft.iot.vmp.media.zlm.dto.StreamProxyItem;
 import com.genersoft.iot.vmp.service.IMediaServerService;
+import com.genersoft.iot.vmp.service.IStreamProxyService;
+import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 
 @Component
-@Order(value=12)
+@Order(value=1)
 public class ZLMRunner implements CommandLineRunner {
 
     private final static Logger logger = LoggerFactory.getLogger(ZLMRunner.class);
@@ -37,13 +35,19 @@ public class ZLMRunner implements CommandLineRunner {
     private ZLMRESTfulUtils zlmresTfulUtils;
 
     @Autowired
-    private ZlmHttpHookSubscribe hookSubscribe;
+    private ZLMHttpHookSubscribe hookSubscribe;
+
+    @Autowired
+    private IStreamProxyService streamProxyService;
 
     @Autowired
     private EventPublisher publisher;
 
     @Autowired
     private IMediaServerService mediaServerService;
+
+    @Autowired
+    private IRedisCatchStorage redisCatchStorage;
 
     @Autowired
     private MediaConfig mediaConfig;
@@ -63,59 +67,57 @@ public class ZLMRunner implements CommandLineRunner {
             mediaServerService.updateToDatabase(mediaSerItem);
         }
         mediaServerService.syncCatchFromDatabase();
-        HookSubscribeForServerStarted hookSubscribeForServerStarted = HookSubscribeFactory.on_server_started();
         // 订阅 zlm启动事件, 新的zlm也会从这里进入系统
-        hookSubscribe.addSubscribe(hookSubscribeForServerStarted,
-                (mediaServerItem, hookParam)->{
-            ZLMServerConfig zlmServerConfig = (ZLMServerConfig)hookParam;
+        hookSubscribe.addSubscribe(ZLMHttpHookSubscribe.HookType.on_server_started,new JSONObject(),
+                (MediaServerItem mediaServerItem, JSONObject response)->{
+            ZLMServerConfig zlmServerConfig = JSONObject.toJavaObject(response, ZLMServerConfig.class);
             if (zlmServerConfig !=null ) {
                 if (startGetMedia != null) {
                     startGetMedia.remove(zlmServerConfig.getGeneralMediaServerId());
-                    if (startGetMedia.size() == 0) {
-                        hookSubscribe.removeSubscribe(HookSubscribeFactory.on_server_started());
-                    }
                 }
+                mediaServerService.zlmServerOnline(zlmServerConfig);
             }
         });
+
+        // 订阅 zlm保活事件, 当zlm离线时做业务的处理
+        hookSubscribe.addSubscribe(ZLMHttpHookSubscribe.HookType.on_server_keepalive,new JSONObject(),
+                (MediaServerItem mediaServerItem, JSONObject response)->{
+                    String mediaServerId = response.getString("mediaServerId");
+                    if (mediaServerId !=null ) {
+                        mediaServerService.updateMediaServerKeepalive(mediaServerId, response.getJSONObject("data"));
+                    }
+                });
 
         // 获取zlm信息
         logger.info("[zlm] 等待默认zlm中...");
 
         // 获取所有的zlm， 并开启主动连接
         List<MediaServerItem> all = mediaServerService.getAllFromDatabase();
-        Map<String, MediaServerItem> allMap = new HashMap<>();
         mediaServerService.updateVmServer(all);
         if (all.size() == 0) {
             all.add(mediaConfig.getMediaSerItem());
         }
         for (MediaServerItem mediaServerItem : all) {
             if (startGetMedia == null) {
-                startGetMedia = new ConcurrentHashMap<>();
+                startGetMedia = new HashMap<>();
             }
             startGetMedia.put(mediaServerItem.getId(), true);
             connectZlmServer(mediaServerItem);
-            allMap.put(mediaServerItem.getId(), mediaServerItem);
         }
         String taskKey = "zlm-connect-timeout";
         dynamicTask.startDelay(taskKey, ()->{
-            if (startGetMedia != null && startGetMedia.size() > 0) {
+            if (startGetMedia != null) {
                 Set<String> allZlmId = startGetMedia.keySet();
                 for (String id : allZlmId) {
                     logger.error("[ {} ]]主动连接失败，不再尝试连接", id);
                 }
                 startGetMedia = null;
             }
-            // 获取redis中所有的zlm
-            List<MediaServerItem> allInRedis = mediaServerService.getAll();
-            for (MediaServerItem mediaServerItem : allInRedis) {
-                if (!allMap.containsKey(mediaServerItem.getId())) {
-                    mediaServerService.delete(mediaServerItem.getId());
-                }
-            }
+        //  TODO 清理数据库中与redis不匹配的zlm
         }, 60 * 1000 );
     }
 
-    @Async("taskExecutor")
+    @Async
     public void connectZlmServer(MediaServerItem mediaServerItem){
         String connectZlmServerTaskKey = "connect-zlm-" + mediaServerItem.getId();
         ZLMServerConfig zlmServerConfigFirst = getMediaServerConfig(mediaServerItem);
@@ -123,9 +125,6 @@ public class ZLMRunner implements CommandLineRunner {
             zlmServerConfigFirst.setIp(mediaServerItem.getIp());
             zlmServerConfigFirst.setHttpPort(mediaServerItem.getHttpPort());
             startGetMedia.remove(mediaServerItem.getId());
-            if (startGetMedia.size() == 0) {
-                hookSubscribe.removeSubscribe(HookSubscribeFactory.on_server_started());
-            }
             mediaServerService.zlmServerOnline(zlmServerConfigFirst);
         }else {
             logger.info("[ {} ]-[ {}:{} ]主动连接失败, 清理相关资源， 开始尝试重试连接",
@@ -140,9 +139,6 @@ public class ZLMRunner implements CommandLineRunner {
                 zlmServerConfig.setIp(mediaServerItem.getIp());
                 zlmServerConfig.setHttpPort(mediaServerItem.getHttpPort());
                 startGetMedia.remove(mediaServerItem.getId());
-                if (startGetMedia.size() == 0) {
-                    hookSubscribe.removeSubscribe(HookSubscribeFactory.on_server_started());
-                }
                 mediaServerService.zlmServerOnline(zlmServerConfig);
             }
         }, 2000);

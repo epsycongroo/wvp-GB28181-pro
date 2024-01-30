@@ -10,12 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
-import org.springframework.util.ObjectUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
+import javax.servlet.*;
 import javax.servlet.annotation.WebFilter;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -25,7 +22,6 @@ import java.io.IOException;
  * @author lin
  */
 @WebFilter(filterName = "ApiAccessFilter", urlPatterns = "/api/*", asyncSupported=true)
-@Component
 public class ApiAccessFilter extends OncePerRequestFilter {
 
     private final static Logger logger = LoggerFactory.getLogger(ApiAccessFilter.class);
@@ -51,13 +47,10 @@ public class ApiAccessFilter extends OncePerRequestFilter {
 
         filterChain.doFilter(servletRequest, servletResponse);
 
-        if (uriName != null && userSetting != null && userSetting.getLogInDatabase() != null && userSetting.getLogInDatabase()) {
+        if (uriName != null && userSetting.getLogInDatebase()) {
 
             LogDto logDto = new LogDto();
             logDto.setName(uriName);
-            if (ObjectUtils.isEmpty(username)) {
-                username = "";
-            }
             logDto.setUsername(username);
             logDto.setAddress(servletRequest.getRemoteAddr());
             logDto.setResult(HttpStatus.valueOf(servletResponse.getStatus()).toString());
@@ -66,7 +59,9 @@ public class ApiAccessFilter extends OncePerRequestFilter {
             logDto.setUri(servletRequest.getRequestURI());
             logDto.setCreateTime(DateUtil.getNow());
             logService.add(logDto);
-
+//            logger.warn("[Api Access]  [{}] [{}] [{}] [{}] [{}] {}ms",
+//                    uriName, servletRequest.getMethod(), servletRequest.getRequestURI(), servletRequest.getRemoteAddr(), HttpStatus.valueOf(servletResponse.getStatus()),
+//                    System.currentTimeMillis() - start);
 
         }
     }

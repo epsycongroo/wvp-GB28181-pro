@@ -22,9 +22,6 @@ public class StreamPushExcelDto {
     @ExcelProperty("目录ID")
     private String catalogId;
 
-    @ExcelProperty("在线状态")
-    private boolean status;
-
     public String getName() {
         return name;
     }
@@ -72,17 +69,5 @@ public class StreamPushExcelDto {
 
     public void setCatalogId(String catalogId) {
         this.catalogId = catalogId;
-    }
-
-    public boolean isStatus() {
-        return status;
-    }
-
-    public boolean getStatus() {
-        return status;
-    }
-
-    public void setStatus(boolean status) {
-        this.status = status;
     }
 }

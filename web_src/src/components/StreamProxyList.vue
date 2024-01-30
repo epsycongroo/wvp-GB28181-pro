@@ -22,8 +22,8 @@
               {{scope.row.url}}
             </el-tag>
             <el-tag size="medium" v-if="scope.row.type != 'default'">
-              <i class="cpoy-btn el-icon-document-copy"  title="点击拷贝" v-clipboard="scope.row.srcUrl" @success="$message({type:'success', message:'成功拷贝到粘贴板'})"></i>
-              {{scope.row.srcUrl}}
+              <i class="cpoy-btn el-icon-document-copy"  title="点击拷贝" v-clipboard="scope.row.src_url" @success="$message({type:'success', message:'成功拷贝到粘贴板'})"></i>
+              {{scope.row.src_url}}
             </el-tag>
           </div>
         </template>
@@ -32,7 +32,7 @@
       <el-table-column label="类型" width="100" >
         <template slot-scope="scope">
           <div slot="reference" class="name-wrapper">
-            <el-tag size="medium">{{scope.row.type === "default"? "直接代理":"FFMPEG代理"}}</el-tag>
+            <el-tag size="medium">{{scope.row.type}}</el-tag>
           </div>
         </template>
       </el-table-column>
@@ -55,28 +55,27 @@
         </template>
       </el-table-column>
       <el-table-column prop="createTime" label="创建时间"  min-width="150" show-overflow-tooltip/>
-      <el-table-column label="音频" min-width="120" >
+      <el-table-column label="转HLS" min-width="120" >
         <template slot-scope="scope">
           <div slot="reference" class="name-wrapper">
-            <el-tag size="medium" v-if="scope.row.enableAudio">已启用</el-tag>
-            <el-tag size="medium" type="info" v-if="!scope.row.enableAudio">未启用</el-tag>
+            <el-tag size="medium" v-if="scope.row.enable_hls">已启用</el-tag>
+            <el-tag size="medium" type="info" v-if="!scope.row.enable_hls">未启用</el-tag>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="录制" min-width="120" >
+      <el-table-column label="MP4录制" min-width="120" >
         <template slot-scope="scope">
           <div slot="reference" class="name-wrapper">
-            <el-tag size="medium" v-if="scope.row.enableMp4">已启用</el-tag>
-            <el-tag size="medium" type="info" v-if="!scope.row.enableMp4">未启用</el-tag>
+            <el-tag size="medium" v-if="scope.row.enable_mp4">已启用</el-tag>
+            <el-tag size="medium" type="info" v-if="!scope.row.enable_mp4">未启用</el-tag>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="无人观看" min-width="160" >
+      <el-table-column label="无人观看自动删除" min-width="160" >
         <template slot-scope="scope">
           <div slot="reference" class="name-wrapper">
-            <el-tag size="medium" v-if="scope.row.enableRemoveNoneReader">移除</el-tag>
-            <el-tag size="medium" v-if="scope.row.enableDisableNoneReader">停用</el-tag>
-            <el-tag size="medium" type="info" v-if="!scope.row.enableRemoveNoneReader && !scope.row.enableDisableNoneReader">不做处理</el-tag>
+            <el-tag size="medium" v-if="scope.row.enable_remove_none_reader">已启用</el-tag>
+            <el-tag size="medium" type="info" v-if="!scope.row.enable_remove_none_reader">未启用</el-tag>
           </div>
         </template>
       </el-table-column>
@@ -91,8 +90,6 @@
           <el-button size="medium" icon="el-icon-check" type="text" :loading="scope.row.startBtnLoading" v-if="!scope.row.enable" @click="start(scope.row)">启用</el-button>
           <el-divider v-if="!scope.row.enable" direction="vertical"></el-divider>
           <el-button size="medium" icon="el-icon-delete" type="text" style="color: #f56c6c" @click="deleteStreamProxy(scope.row)">删除</el-button>
-          <el-button size="medium" icon="el-icon-cloudy" type="text" @click="queryCloudRecords(scope.row)">云端录像
-          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -134,6 +131,7 @@
 				currentPage:1,
 				count:15,
 				total:0,
+				getListLoading: false,
         startBtnLoading: false
 			};
 		},
@@ -141,7 +139,7 @@
 		},
 		mounted() {
 			this.initData();
-			this.startUpdateList()
+			this.updateLooper = setInterval(this.initData, 1000);
 		},
 		destroyed() {
 			this.$destroy('videojs');
@@ -151,12 +149,6 @@
 			initData: function() {
 				this.getStreamProxyList();
 			},
-      stopUpdateList: function (){
-        window.clearInterval(this.updateLooper)
-      },
-      startUpdateList: function (){
-        this.updateLooper = setInterval(this.initData, 1000);
-      },
 			currentChange: function(val){
 				this.currentPage = val;
 				this.getStreamProxyList();
@@ -167,6 +159,7 @@
 			},
 			getStreamProxyList: function() {
 				let that = this;
+				this.getListLoading = true;
 				this.$axios({
 					method: 'get',
 					url:`/api/proxy/list`,
@@ -175,31 +168,34 @@
 						count: that.count
 					}
 				}).then(function (res) {
-          if (res.data.code === 0) {
-            that.total = res.data.data.total;
-            for (let i = 0; i < res.data.data.list.length; i++) {
-              res.data.data.list[i]["startBtnLoading"] = false;
-            }
-            that.streamProxyList = res.data.data.list;
+					that.total = res.data.total;
+          for (let i = 0; i < res.data.list.length; i++) {
+            res.data.list[i]["startBtnLoading"] = false;
           }
+          that.streamProxyList = res.data.list;
+					that.getListLoading = false;
 				}).catch(function (error) {
 					console.log(error);
+					that.getListLoading = false;
 				});
 			},
 			addStreamProxy: function(){
 				this.$refs.streamProxyEdit.openDialog(null, this.initData)
 			},
       addOnvif: function(){
+        this.getListLoading = true;
+        this.getListLoading = true;
         this.$axios({
           method: 'get',
           url:`/api/onvif/search?timeout=3000`,
         }).then((res) =>{
-          if (res.data.code === 0 ){
+          this.getListLoading = false;
+          if (res.data.code == 0 ){
             if (res.data.data.length > 0) {
               this.$refs.onvifEdit.openDialog(res.data.data, (url)=>{
                   if (url != null) {
                     this.$refs.onvifEdit.close();
-                    this.$refs.streamProxyEdit.openDialog({type: "default", url: url, srcUrl: url}, this.initData())
+                    this.$refs.streamProxyEdit.openDialog({type: "default", url: url, src_url: url}, this.initData())
                   }
               })
             }else {
@@ -210,6 +206,7 @@
           }
 
         }).catch((error)=> {
+          this.getListLoading = false;
           this.$message.error(error.response.data.msg);
         });
 
@@ -218,15 +215,17 @@
 			},
 			play: function(row){
 				let that = this;
+				this.getListLoading = true;
 				this.$axios({
 					method: 'get',
-					url:`/api/push/getPlayUrl`,
+					url:`/api/media/stream_info_by_app_and_stream`,
 					params: {
 						app: row.app,
 						stream: row.stream,
             mediaServerId: row.mediaServerId
 					}
 				}).then(function (res) {
+					that.getListLoading = false;
 					if (res.data.code === 0) {
             that.$refs.devicePlayer.openDialog("streamPlay", null, null, {
               streamInfo: res.data.data,
@@ -242,37 +241,31 @@
 
 				}).catch(function (error) {
 					console.log(error);
+					that.getListLoading = false;
 				});
 
 			},
-      queryCloudRecords: function (row) {
-
-        this.$router.push(`/cloudRecordDetail/${row.app}/${row.stream}`)
-      },
 			deleteStreamProxy: function(row){
 				let that = this;
-        this.$confirm('确定删除此代理吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }).then(() => {
-          that.$axios({
-            method:"delete",
-            url:"/api/proxy/del",
-            params:{
-              app: row.app,
-              stream: row.stream
-            }
-          }).then((res)=>{
-            that.initData()
-          }).catch(function (error) {
-            console.log(error);
-          });
-        }).catch(() => {
-        });
+				this.getListLoading = true;
+				that.$axios({
+                    method:"delete",
+                    url:"/api/proxy/del",
+                    params:{
+                      app: row.app,
+                      stream: row.stream
+                    }
+                }).then((res)=>{
+                    that.getListLoading = false;
+					          that.initData()
+                }).catch(function (error) {
+                    console.log(error);
+					          that.getListLoading = false;
+                });
 			},
 			start: function(row){
-        this.stopUpdateList()
+				let that = this;
+				this.getListLoading = true;
         this.$set(row, 'startBtnLoading', true)
 				this.$axios({
 					method: 'get',
@@ -281,31 +274,28 @@
 						app: row.app,
 						stream: row.stream
 					}
-				}).then((res)=> {
-				  if (res.data.code === 0){
-            this.initData()
+				}).then(function (res) {
+          that.getListLoading = false;
+          that.$set(row, 'startBtnLoading', false)
+				  if (res.data == "success"){
+            that.initData()
           }else {
-            this.$message({
+            that.$message({
               showClose: true,
-              message: "启动失败，请检查地址是否可用！",
+              message: "保存失败，请检查地址是否可用！",
               type: "error",
             });
           }
-          this.$set(row, 'startBtnLoading', false)
-          this.startUpdateList()
-				}).catch((error)=> {
+
+				}).catch(function (error) {
 					console.log(error);
-          this.$message({
-            showClose: true,
-            message: "启动失败，请检查地址是否可用！",
-            type: "error",
-          });
-          this.$set(row, 'startBtnLoading', false)
-          this.startUpdateList()
+					that.getListLoading = false;
+          that.$set(row, 'startBtnLoading', false)
 				});
 			},
 			stop: function(row){
 				let that = this;
+				this.getListLoading = true;
 				this.$axios({
 					method: 'get',
 					url:`/api/proxy/stop`,
@@ -314,9 +304,11 @@
 						stream: row.stream
 					}
 				}).then(function (res) {
+					that.getListLoading = false;
 					that.initData()
 				}).catch(function (error) {
 					console.log(error);
+					that.getListLoading = false;
 				});
 			},
       refresh: function (){

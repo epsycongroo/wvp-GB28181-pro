@@ -1,7 +1,10 @@
 package com.genersoft.iot.vmp.service.bean;
 
-public interface PlayBackCallback<T> {
+import com.genersoft.iot.vmp.gb28181.transmit.callback.RequestMessage;
+import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
 
-    void call(PlayBackResult<T> msg);
+public interface PlayBackCallback {
+
+    void call(PlayBackResult<RequestMessage> msg);
 
 }

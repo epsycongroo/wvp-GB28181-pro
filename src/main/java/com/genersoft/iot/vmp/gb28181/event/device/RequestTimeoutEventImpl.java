@@ -1,6 +1,7 @@
 package com.genersoft.iot.vmp.gb28181.event.device;
 
 import com.genersoft.iot.vmp.gb28181.bean.Device;
+import com.genersoft.iot.vmp.gb28181.event.SipSubscribe;
 import com.genersoft.iot.vmp.service.IDeviceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationListener;
@@ -8,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import javax.sip.ClientTransaction;
 import javax.sip.address.SipURI;
+import javax.sip.header.CallIdHeader;
+import javax.sip.header.ToHeader;
 import javax.sip.message.Request;
 
 /**
@@ -31,9 +34,8 @@ public class RequestTimeoutEventImpl implements ApplicationListener<RequestTimeo
                 if (device == null) {
                     return;
                 }
-                deviceService.offline(device.getDeviceId(), "等待消息超时");
+                deviceService.offline(device.getDeviceId());
             }
-
         }
     }
 }

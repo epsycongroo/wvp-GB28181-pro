@@ -1,6 +1,6 @@
 package com.genersoft.iot.vmp.gb28181.bean;
 
-import com.genersoft.iot.vmp.common.InviteSessionType;
+import com.genersoft.iot.vmp.gb28181.session.VideoStreamSessionManager;
 
 public class SsrcTransaction {
 
@@ -8,12 +8,11 @@ public class SsrcTransaction {
     private String channelId;
     private String callId;
     private String stream;
+    private byte[] transaction;
+    private byte[] dialog;
     private String mediaServerId;
     private String ssrc;
-
-    private SipTransactionInfo sipTransactionInfo;
-
-    private InviteSessionType type;
+    private VideoStreamSessionManager.SessionType type;
 
     public String getDeviceId() {
         return deviceId;
@@ -47,6 +46,22 @@ public class SsrcTransaction {
         this.stream = stream;
     }
 
+    public byte[] getTransaction() {
+        return transaction;
+    }
+
+    public void setTransaction(byte[] transaction) {
+        this.transaction = transaction;
+    }
+
+    public byte[] getDialog() {
+        return dialog;
+    }
+
+    public void setDialog(byte[] dialog) {
+        this.dialog = dialog;
+    }
+
     public String getMediaServerId() {
         return mediaServerId;
     }
@@ -63,19 +78,11 @@ public class SsrcTransaction {
         this.ssrc = ssrc;
     }
 
-    public InviteSessionType getType() {
+    public VideoStreamSessionManager.SessionType getType() {
         return type;
     }
 
-    public void setType(InviteSessionType type) {
+    public void setType(VideoStreamSessionManager.SessionType type) {
         this.type = type;
-    }
-
-    public SipTransactionInfo getSipTransactionInfo() {
-        return sipTransactionInfo;
-    }
-
-    public void setSipTransactionInfo(SipTransactionInfo sipTransactionInfo) {
-        this.sipTransactionInfo = sipTransactionInfo;
     }
 }

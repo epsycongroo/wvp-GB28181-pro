@@ -1,11 +1,10 @@
 package com.genersoft.iot.vmp.vmanager.gb28181.device;
 
-import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson.JSONObject;
 import com.genersoft.iot.vmp.conf.DynamicTask;
-import com.genersoft.iot.vmp.conf.exception.ControllerException;
-import com.genersoft.iot.vmp.conf.security.JwtUtils;
 import com.genersoft.iot.vmp.gb28181.bean.Device;
 import com.genersoft.iot.vmp.gb28181.bean.DeviceChannel;
+import com.genersoft.iot.vmp.gb28181.bean.SubscribeHolder;
 import com.genersoft.iot.vmp.gb28181.bean.SyncStatus;
 import com.genersoft.iot.vmp.gb28181.task.ISubscribeTask;
 import com.genersoft.iot.vmp.gb28181.task.impl.CatalogSubscribeTask;
@@ -13,45 +12,37 @@ import com.genersoft.iot.vmp.gb28181.task.impl.MobilePositionSubscribeTask;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.DeferredResultHolder;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.RequestMessage;
 import com.genersoft.iot.vmp.gb28181.transmit.cmd.impl.SIPCommander;
-import com.genersoft.iot.vmp.service.IDeviceChannelService;
 import com.genersoft.iot.vmp.service.IDeviceService;
-import com.genersoft.iot.vmp.service.IInviteStreamService;
 import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
 import com.genersoft.iot.vmp.storager.IVideoManagerStorage;
 import com.genersoft.iot.vmp.vmanager.bean.BaseTree;
-import com.genersoft.iot.vmp.vmanager.bean.ErrorCode;
 import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
 import com.github.pagehelper.PageInfo;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.apache.commons.compress.utils.IOUtils;
-import org.apache.ibatis.annotations.Options;
+import org.apache.http.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.async.DeferredResult;
 
-import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
-import javax.sip.InvalidArgumentException;
-import javax.sip.SipException;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import javax.sip.DialogState;
+import java.io.*;
 import java.nio.file.Files;
-import java.text.ParseException;
 import java.util.*;
 
-@Tag(name  = "国标设备查询", description = "国标设备查询")
+@Api(tags = "国标设备查询", value = "国标设备查询")
 @SuppressWarnings("rawtypes")
-
+@CrossOrigin
 @RestController
 @RequestMapping("/api/device/query")
 public class DeviceQuery {
@@ -62,13 +53,7 @@ public class DeviceQuery {
 	private IVideoManagerStorage storager;
 
 	@Autowired
-	private IDeviceChannelService deviceChannelService;
-
-	@Autowired
 	private IRedisCatchStorage redisCatchStorage;
-
-	@Autowired
-	private IInviteStreamService inviteStreamService;
 	
 	@Autowired
 	private SIPCommander cmder;
@@ -82,17 +67,27 @@ public class DeviceQuery {
 	@Autowired
 	private DynamicTask dynamicTask;
 
+	@Autowired
+	private SubscribeHolder subscribeHolder;
+
 	/**
 	 * 使用ID查询国标设备
 	 * @param deviceId 国标ID
 	 * @return 国标设备
 	 */
-	@Operation(summary = "查询国标设备", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
+	@ApiOperation("使用ID查询国标设备")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+	})
 	@GetMapping("/devices/{deviceId}")
-	public Device devices(@PathVariable String deviceId){
+	public ResponseEntity<Device> devices(@PathVariable String deviceId){
 		
-		return storager.queryVideoDevice(deviceId);
+//		if (logger.isDebugEnabled()) {
+//			logger.debug("查询视频设备API调用，deviceId：" + deviceId);
+//		}
+		
+		Device device = storager.queryVideoDevice(deviceId);
+		return new ResponseEntity<>(device,HttpStatus.OK);
 	}
 
 	/**
@@ -101,15 +96,19 @@ public class DeviceQuery {
 	 * @param count 每页查询数量
 	 * @return 分页国标列表
 	 */
-	@Operation(summary = "分页查询国标设备", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "page", description = "当前页", required = true)
-	@Parameter(name = "count", description = "每页查询数量", required = true)
+	@ApiOperation("分页查询国标设备")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "page", value = "当前页", required = true, dataTypeClass = Integer.class),
+			@ApiImplicitParam(name = "count", value = "每页查询数量", required = true, dataTypeClass = Integer.class),
+	})
 	@GetMapping("/devices")
-	@Options()
 	public PageInfo<Device> devices(int page, int count){
-//		if (page == null) page = 0;
-//		if (count == null) count = 20;
-		return storager.queryVideoDeviceList(page, count,null);
+		
+//		if (logger.isDebugEnabled()) {
+//			logger.debug("查询所有视频设备API调用");
+//		}
+		
+		return storager.queryVideoDeviceList(page, count);
 	}
 
 	/**
@@ -121,29 +120,34 @@ public class DeviceQuery {
 	 * @param query 查询内容
 	 * @param online 是否在线  在线 true / 离线 false
 	 * @param channelType 设备 false/子目录 true
-	 * @param catalogUnderDevice 是否直属与设备的目录
 	 * @return 通道列表
 	 */
+	@ApiOperation("分页查询通道")
 	@GetMapping("/devices/{deviceId}/channels")
-	@Operation(summary = "分页查询通道", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "page", description = "当前页", required = true)
-	@Parameter(name = "count", description = "每页查询数量", required = true)
-	@Parameter(name = "query", description = "查询内容")
-	@Parameter(name = "online", description = "是否在线")
-	@Parameter(name = "channelType", description = "设备/子目录-> false/true")
-	@Parameter(name = "catalogUnderDevice", description = "是否直属与设备的目录")
-	public PageInfo<DeviceChannel> channels(@PathVariable String deviceId,
+	@ApiImplicitParams({
+			@ApiImplicitParam(name="deviceId", value = "设备id", required = true ,dataTypeClass = String.class),
+			@ApiImplicitParam(name="page", value = "当前页", required = true ,dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="count", value = "每页查询数量", required = true ,dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="query", value = "查询内容" ,dataTypeClass = String.class),
+			@ApiImplicitParam(name="online", value = "是否在线"  ,dataTypeClass = Boolean.class),
+			@ApiImplicitParam(name="channelType", value = "设备/子目录-> false/true" ,dataTypeClass = Boolean.class),
+			@ApiImplicitParam(name="catalogUnderDevice", value = "是否直属与设备的目录" ,dataTypeClass = Boolean.class),
+	})
+	public ResponseEntity<PageInfo> channels(@PathVariable String deviceId,
 											   int page, int count,
 											   @RequestParam(required = false) String query,
 											   @RequestParam(required = false) Boolean online,
 											   @RequestParam(required = false) Boolean channelType,
 											   @RequestParam(required = false) Boolean catalogUnderDevice) {
-		if (ObjectUtils.isEmpty(query)) {
+//		if (logger.isDebugEnabled()) {
+//			logger.debug("查询视频设备通道API调用");
+//		}
+		if (StringUtils.isEmpty(query)) {
 			query = null;
 		}
 
-		return storager.queryChannelsByDeviceId(deviceId, query, channelType, online, catalogUnderDevice, page, count);
+		PageInfo pageResult = storager.queryChannelsByDeviceId(deviceId, query, channelType, online, catalogUnderDevice, page, count);
+		return new ResponseEntity<>(pageResult,HttpStatus.OK);
 	}
 
 	/**
@@ -151,9 +155,11 @@ public class DeviceQuery {
 	 * @param deviceId 设备id
 	 * @return
 	 */
-	@Operation(summary = "同步设备通道", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@GetMapping("/devices/{deviceId}/sync")
+	@ApiOperation("同步设备通道")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name="deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+	})
+	@PostMapping("/devices/{deviceId}/sync")
 	public WVPResult<SyncStatus> devicesSync(@PathVariable String deviceId){
 		
 		if (logger.isDebugEnabled()) {
@@ -163,8 +169,11 @@ public class DeviceQuery {
 		boolean status = deviceService.isSyncRunning(deviceId);
 		// 已存在则返回进度
 		if (status) {
+			WVPResult<SyncStatus> wvpResult = new WVPResult<>();
+			wvpResult.setCode(0);
 			SyncStatus channelSyncStatus = deviceService.getChannelSyncStatus(deviceId);
-			return WVPResult.success(channelSyncStatus);
+			wvpResult.setData(channelSyncStatus);
+			return wvpResult;
 		}
 		deviceService.sync(device);
 
@@ -179,19 +188,21 @@ public class DeviceQuery {
 	 * @param deviceId 设备id
 	 * @return
 	 */
-	@Operation(summary = "移除设备", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
+	@ApiOperation("移除设备")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name="deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+	})
 	@DeleteMapping("/devices/{deviceId}/delete")
-	public String delete(@PathVariable String deviceId){
+	public ResponseEntity<String> delete(@PathVariable String deviceId){
 		
 		if (logger.isDebugEnabled()) {
 			logger.debug("设备信息删除API调用，deviceId：" + deviceId);
 		}
 
 		// 清除redis记录
-		boolean isSuccess = deviceService.delete(deviceId);
+		boolean isSuccess = storager.delete(deviceId);
 		if (isSuccess) {
-			inviteStreamService.clearInviteInfo(deviceId);
+			redisCatchStorage.clearCatchByDeviceId(deviceId);
 			// 停止此设备的订阅更新
 			Set<String> allKeys = dynamicTask.getAllKeys();
 			for (String key : allKeys) {
@@ -206,10 +217,10 @@ public class DeviceQuery {
 			}
 			JSONObject json = new JSONObject();
 			json.put("deviceId", deviceId);
-			return json.toString();
+			return new ResponseEntity<>(json.toString(),HttpStatus.OK);
 		} else {
 			logger.warn("设备信息删除API调用失败！");
-			throw new ControllerException(ErrorCode.ERROR100.getCode(), "设备信息删除API调用失败！");
+			return new ResponseEntity<String>("设备信息删除API调用失败！", HttpStatus.INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -224,16 +235,18 @@ public class DeviceQuery {
 	 * @param channelType 通道类型
 	 * @return 子通道列表
 	 */
-	@Operation(summary = "分页查询子目录通道", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "channelId", description = "通道国标编号", required = true)
-	@Parameter(name = "page", description = "当前页", required = true)
-	@Parameter(name = "count", description = "每页查询数量", required = true)
-	@Parameter(name = "query", description = "查询内容")
-	@Parameter(name = "online", description = "是否在线")
-	@Parameter(name = "channelType", description = "设备/子目录-> false/true")
+	@ApiOperation("分页查询子目录通道")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name="deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name="channelId", value = "通道id", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name="page", value = "当前页", required = true, dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="count", value = "每页条数", required = true, dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="query", value = "查询内容", dataTypeClass = String.class),
+			@ApiImplicitParam(name="online", value = "是否在线", dataTypeClass = Boolean.class),
+			@ApiImplicitParam(name="channelType", value = "通道类型， 子目录", dataTypeClass = Boolean.class),
+	})
 	@GetMapping("/sub_channels/{deviceId}/{channelId}/channels")
-	public PageInfo<DeviceChannel> subChannels(@PathVariable String deviceId,
+	public ResponseEntity<PageInfo> subChannels(@PathVariable String deviceId,
 												  @PathVariable String channelId,
 												  int page,
 												  int count,
@@ -241,13 +254,17 @@ public class DeviceQuery {
 												  @RequestParam(required = false) Boolean online,
 												  @RequestParam(required = false) Boolean channelType){
 
+//		if (logger.isDebugEnabled()) {
+//			logger.debug("查询所有视频通道API调用");
+//		}
 		DeviceChannel deviceChannel = storager.queryChannel(deviceId,channelId);
 		if (deviceChannel == null) {
 			PageInfo<DeviceChannel> deviceChannelPageResult = new PageInfo<>();
-			return deviceChannelPageResult;
+			return new ResponseEntity<>(deviceChannelPageResult,HttpStatus.OK);
 		}
 
-		return storager.querySubChannels(deviceId, channelId, query, channelType, online, page, count);
+		PageInfo pageResult = storager.querySubChannels(deviceId, channelId, query, channelType, online, page, count);
+		return new ResponseEntity<>(pageResult,HttpStatus.OK);
 	}
 
 	/**
@@ -256,12 +273,15 @@ public class DeviceQuery {
 	 * @param channel 通道
 	 * @return
 	 */
-	@Operation(summary = "更新通道信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "channel", description = "通道信息", required = true)
+	@ApiOperation("更新通道信息")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name="deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name="channel", value = "通道", required = true, dataTypeClass = String.class),
+	})
 	@PostMapping("/channel/update/{deviceId}")
-	public void updateChannel(@PathVariable String deviceId,DeviceChannel channel){
-		deviceChannelService.updateChannel(deviceId, channel);
+	public ResponseEntity<PageInfo> updateChannel(@PathVariable String deviceId,DeviceChannel channel){
+		storager.updateChannel(deviceId, channel);
+		return new ResponseEntity<>(null,HttpStatus.OK);
 	}
 
 	/**
@@ -270,37 +290,19 @@ public class DeviceQuery {
 	 * @param streamMode 数据流传输模式
 	 * @return
 	 */
-	@Operation(summary = "修改数据流传输模式", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "streamMode", description = "数据流传输模式, 取值：" +
-			"UDP（udp传输），TCP-ACTIVE（tcp主动模式,暂不支持），TCP-PASSIVE（tcp被动模式）", required = true)
+	@ApiOperation("修改数据流传输模式")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name = "streamMode", value = "数据流传输模式, 取值：" +
+					"UDP（udp传输），TCP-ACTIVE（tcp主动模式,暂不支持），TCP-PASSIVE（tcp被动模式）", dataTypeClass = String.class),
+	})
 	@PostMapping("/transport/{deviceId}/{streamMode}")
-	public void updateTransport(@PathVariable String deviceId, @PathVariable String streamMode){
-		Device device = deviceService.getDevice(deviceId);
+	public ResponseEntity<PageInfo> updateTransport(@PathVariable String deviceId, @PathVariable String streamMode){
+		Device device = storager.queryVideoDevice(deviceId);
 		device.setStreamMode(streamMode);
-		deviceService.updateCustomDevice(device);
-	}
-
-	/**
-	 * 添加设备信息
-	 * @param device 设备信息
-	 * @return
-	 */
-	@Operation(summary = "添加设备信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "device", description = "设备", required = true)
-	@PostMapping("/device/add/")
-	public void addDevice(Device device){
-
-		if (device == null || device.getDeviceId() == null) {
-			throw new ControllerException(ErrorCode.ERROR400);
-		}
-
-		// 查看deviceId是否存在
-		boolean exist = deviceService.isExist(device.getDeviceId());
-		if (exist) {
-			throw new ControllerException(ErrorCode.ERROR100.getCode(), "设备编号已存在");
-		}
-		deviceService.addDevice(device);
+//		storager.updateDevice(device);
+		deviceService.updateDevice(device);
+		return new ResponseEntity<>(null,HttpStatus.OK);
 	}
 
 	/**
@@ -308,14 +310,20 @@ public class DeviceQuery {
 	 * @param device 设备信息
 	 * @return
 	 */
-	@Operation(summary = "更新设备信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "device", description = "设备", required = true)
+	@ApiOperation("更新设备信息")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "device", value = "设备信息", required = true, dataTypeClass = Device.class)
+	})
 	@PostMapping("/device/update/")
-	public void updateDevice(Device device){
+	public ResponseEntity<WVPResult<String>> updateDevice(Device device){
 
 		if (device != null && device.getDeviceId() != null) {
-			deviceService.updateCustomDevice(device);
+			deviceService.updateDevice(device);
 		}
+		WVPResult<String> result = new WVPResult<>();
+		result.setCode(0);
+		result.setMsg("success");
+		return new ResponseEntity<>(result,HttpStatus.OK);
 	}
 
 	/**
@@ -323,8 +331,10 @@ public class DeviceQuery {
 	 * 
 	 * @param deviceId 设备id
 	 */
-	@Operation(summary = "设备状态查询", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
+	@ApiOperation("设备状态查询")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+	})
 	@GetMapping("/devices/{deviceId}/status")
 	public DeferredResult<ResponseEntity<String>> deviceStatusApi(@PathVariable String deviceId) {
 		if (logger.isDebugEnabled()) {
@@ -338,18 +348,13 @@ public class DeviceQuery {
 			result.setResult(new ResponseEntity(String.format("设备%s不存在", deviceId),HttpStatus.OK));
 			return result;
 		}
-		try {
-			cmder.deviceStatusQuery(device, event -> {
-				RequestMessage msg = new RequestMessage();
-				msg.setId(uuid);
-				msg.setKey(key);
-				msg.setData(String.format("获取设备状态失败，错误码： %s, %s", event.statusCode, event.msg));
-				resultHolder.invokeResult(msg);
-			});
-		} catch (InvalidArgumentException | SipException | ParseException e) {
-			logger.error("[命令发送失败] 获取设备状态: {}", e.getMessage());
-			throw new ControllerException(ErrorCode.ERROR100.getCode(), "命令发送失败: " + e.getMessage());
-		}
+		cmder.deviceStatusQuery(device, event -> {
+			RequestMessage msg = new RequestMessage();
+			msg.setId(uuid);
+			msg.setKey(key);
+			msg.setData(String.format("获取设备状态失败，错误码： %s, %s", event.statusCode, event.msg));
+			resultHolder.invokeResult(msg);
+		});
 		result.onTimeout(()->{
 			logger.warn(String.format("获取设备状态超时"));
 			// 释放rtpserver
@@ -374,14 +379,16 @@ public class DeviceQuery {
 	 * @param endTime		报警发生终止时间（可选）
 	 * @return				true = 命令发送成功
 	 */
-	@Operation(summary = "设备报警查询", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "startPriority", description = "报警起始级别")
-	@Parameter(name = "endPriority", description = "报警终止级别")
-	@Parameter(name = "alarmMethod", description = "报警方式条件")
-	@Parameter(name = "alarmType", description = "报警类型")
-	@Parameter(name = "startTime", description = "报警发生起始时间")
-	@Parameter(name = "endTime", description = "报警发生终止时间")
+	@ApiOperation("设备报警查询")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备id", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name = "startPriority", value = "报警起始级别", dataTypeClass = String.class),
+			@ApiImplicitParam(name = "endPriority", value = "报警终止级别", dataTypeClass = String.class),
+			@ApiImplicitParam(name = "alarmMethod", value = "报警方式条件", dataTypeClass = String.class),
+			@ApiImplicitParam(name = "alarmType", value = "报警类型", dataTypeClass = String.class),
+			@ApiImplicitParam(name = "startTime", value = "报警发生起始时间", dataTypeClass = String.class),
+			@ApiImplicitParam(name = "endTime", value = "报警发生终止时间", dataTypeClass = String.class),
+	})
 	@GetMapping("/alarm/{deviceId}")
 	public DeferredResult<ResponseEntity<String>> alarmApi(@PathVariable String deviceId,
 														@RequestParam(required = false) String startPriority, 
@@ -396,19 +403,14 @@ public class DeviceQuery {
 		Device device = storager.queryVideoDevice(deviceId);
 		String key = DeferredResultHolder.CALLBACK_CMD_ALARM + deviceId;
 		String uuid = UUID.randomUUID().toString();
-		try {
-			cmder.alarmInfoQuery(device, startPriority, endPriority, alarmMethod, alarmType, startTime, endTime, event -> {
-				RequestMessage msg = new RequestMessage();
-				msg.setId(uuid);
-				msg.setKey(key);
-				msg.setData(String.format("设备报警查询失败，错误码： %s, %s",event.statusCode, event.msg));
-				resultHolder.invokeResult(msg);
-			});
-		} catch (InvalidArgumentException | SipException | ParseException e) {
-			logger.error("[命令发送失败] 设备报警查询: {}", e.getMessage());
-			throw new ControllerException(ErrorCode.ERROR100.getCode(), "命令发送失败: " + e.getMessage());
-		}
-		DeferredResult<ResponseEntity<String>> result = new DeferredResult<ResponseEntity<String >> (3 * 1000L);
+		cmder.alarmInfoQuery(device, startPriority, endPriority, alarmMethod, alarmType, startTime, endTime, event -> {
+			RequestMessage msg = new RequestMessage();
+			msg.setId(uuid);
+			msg.setKey(key);
+			msg.setData(String.format("设备报警查询失败，错误码： %s, %s",event.statusCode, event.msg));
+			resultHolder.invokeResult(msg);
+		});
+        DeferredResult<ResponseEntity<String>> result = new DeferredResult<ResponseEntity<String >> (3 * 1000L);
 		result.onTimeout(()->{
 			logger.warn(String.format("设备报警查询超时"));
 			// 释放rtpserver
@@ -424,8 +426,7 @@ public class DeviceQuery {
 
 
 	@GetMapping("/{deviceId}/sync_status")
-	@Operation(summary = "获取通道同步进度", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
+	@ApiOperation(value = "获取通道同步进度", notes = "获取通道同步进度")
 	public WVPResult<SyncStatus> getSyncStatus(@PathVariable String deviceId) {
 		SyncStatus channelSyncStatus = deviceService.getChannelSyncStatus(deviceId);
 		WVPResult<SyncStatus> wvpResult = new WVPResult<>();
@@ -433,8 +434,7 @@ public class DeviceQuery {
 			wvpResult.setCode(-1);
 			wvpResult.setMsg("同步尚未开始");
 		}else {
-			wvpResult.setCode(ErrorCode.SUCCESS.getCode());
-			wvpResult.setMsg(ErrorCode.SUCCESS.getMsg());
+			wvpResult.setCode(0);
 			wvpResult.setData(channelSyncStatus);
 			if (channelSyncStatus.getErrorMsg() != null) {
 				wvpResult.setMsg(channelSyncStatus.getErrorMsg());
@@ -444,41 +444,38 @@ public class DeviceQuery {
 	}
 
 	@GetMapping("/{deviceId}/subscribe_info")
-	@Operation(summary = "获取设备的订阅状态", security = @SecurityRequirement(name = JwtUtils.HEADER))
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	public WVPResult<Map<String, Integer>> getSubscribeInfo(@PathVariable String deviceId) {
+	@ApiOperation(value = "获取设备的订阅状态", notes = "获取设备的订阅状态")
+	public WVPResult<Map<String, String>> getSubscribeInfo(@PathVariable String deviceId) {
 		Set<String> allKeys = dynamicTask.getAllKeys();
-		Map<String, Integer> dialogStateMap = new HashMap<>();
+		Map<String, String> dialogStateMap = new HashMap<>();
 		for (String key : allKeys) {
 			if (key.startsWith(deviceId)) {
 				ISubscribeTask subscribeTask = (ISubscribeTask)dynamicTask.get(key);
+				DialogState dialogState = subscribeTask.getDialogState();
+				if (dialogState == null) {
+					continue;
+				}
 				if (subscribeTask instanceof CatalogSubscribeTask) {
-					dialogStateMap.put("catalog", 1);
+					dialogStateMap.put("catalog", dialogState.toString());
 				}else if (subscribeTask instanceof MobilePositionSubscribeTask) {
-					dialogStateMap.put("mobilePosition", 1);
+					dialogStateMap.put("mobilePosition", dialogState.toString());
 				}
 			}
 		}
-		WVPResult<Map<String, Integer>> wvpResult = new WVPResult<>();
+		WVPResult<Map<String, String>> wvpResult = new WVPResult<>();
 		wvpResult.setCode(0);
 		wvpResult.setData(dialogStateMap);
 		return wvpResult;
 	}
 
 	@GetMapping("/snap/{deviceId}/{channelId}")
-	@Operation(summary = "请求截图")
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "channelId", description = "通道国标编号", required = true)
-	@Parameter(name = "mark", description = "标识", required = false)
-	public void getSnap(HttpServletResponse resp, @PathVariable String deviceId, @PathVariable String channelId, @RequestParam(required = false) String mark) {
+	@ApiOperation(value = "请求截图", notes = "请求截图")
+	public void getSnap(HttpServletResponse resp, @PathVariable String deviceId, @PathVariable String channelId) {
 
 		try {
-			final InputStream in = Files.newInputStream(new File("snap" + File.separator + deviceId + "_" + channelId + (mark == null? ".jpg": ("_" + mark + ".jpg"))).toPath());
+			final InputStream in = Files.newInputStream(new File("snap" + File.separator + deviceId + "_" + channelId + ".jpg").toPath());
 			resp.setContentType(MediaType.IMAGE_PNG_VALUE);
-			ServletOutputStream outputStream = resp.getOutputStream();
 			IOUtils.copy(in, resp.getOutputStream());
-			in.close();
-			outputStream.close();
 		} catch (IOException e) {
 			resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
 		}
@@ -492,17 +489,16 @@ public class DeviceQuery {
 	 * @param count 每页条数
 	 * @return 国标设备
 	 */
-	@Operation(summary = "查询国标树")
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "parentId", description = "父级国标编号")
-	@Parameter(name = "onlyCatalog", description = "只获取目录")
-	@Parameter(name = "page", description = "当前页", required = true)
-	@Parameter(name = "count", description = "每页条数", required = true)
+	@ApiOperation("查询国标树")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name = "parentId", value = "父ID", required = false, dataTypeClass = String.class),
+			@ApiImplicitParam(name = "onlyCatalog", value = "只获取目录", required = false, dataTypeClass = Boolean.class),
+			@ApiImplicitParam(name="page", value = "当前页", required = true, dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="count", value = "每页条数", required = true, dataTypeClass = Integer.class),
+	})
 	@GetMapping("/tree/{deviceId}")
-	public ResponseEntity<PageInfo> getTree(@PathVariable String deviceId,
-											@RequestParam(required = false) String parentId,
-											@RequestParam(required = false) Boolean onlyCatalog,
-											int page, int count){
+	public ResponseEntity<PageInfo> getTree(@PathVariable String deviceId, @RequestParam(required = false) String parentId, @RequestParam(required = false) Boolean onlyCatalog, int page, int count){
 
 
 		if (page <= 0) {
@@ -534,6 +530,7 @@ public class DeviceQuery {
 		return new ResponseEntity<>(pageInfo,HttpStatus.OK);
 	}
 
+
 	/**
 	 * 查询国标树下的通道
 	 * @param deviceId 设备ID
@@ -542,13 +539,16 @@ public class DeviceQuery {
 	 * @param count 每页条数
 	 * @return 国标设备
 	 */
-	@Operation(summary = "查询国标树下的通道")
-	@Parameter(name = "deviceId", description = "设备国标编号", required = true)
-	@Parameter(name = "parentId", description = "父级国标编号")
-	@Parameter(name = "page", description = "当前页", required = true)
-	@Parameter(name = "count", description = "每页条数", required = true)
+	@ApiOperation("查询国标树下的通道")
+	@ApiImplicitParams({
+			@ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+			@ApiImplicitParam(name = "parentId", value = "父ID", required = false, dataTypeClass = String.class),
+			@ApiImplicitParam(name="page", value = "当前页", required = true, dataTypeClass = Integer.class),
+			@ApiImplicitParam(name="count", value = "每页条数", required = true, dataTypeClass = Integer.class),
+	})
 	@GetMapping("/tree/channel/{deviceId}")
 	public ResponseEntity<PageInfo> getChannelInTreeNode(@PathVariable String deviceId, @RequestParam(required = false) String parentId, int page, int count){
+
 
 		if (page <= 0) {
 			page = 1;

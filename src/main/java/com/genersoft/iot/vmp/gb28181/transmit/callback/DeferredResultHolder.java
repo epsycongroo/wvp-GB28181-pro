@@ -1,14 +1,14 @@
 package com.genersoft.iot.vmp.gb28181.transmit.callback;
 
-import com.genersoft.iot.vmp.vmanager.bean.DeferredResultEx;
-import org.springframework.stereotype.Component;
-import org.springframework.util.ObjectUtils;
-import org.springframework.web.context.request.async.DeferredResult;
-
-import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.async.DeferredResult;
 
 /**    
  * @description: 异步请求处理
@@ -39,13 +39,11 @@ public class DeferredResultHolder {
 
 	public static final String CALLBACK_CMD_DOWNLOAD = "CALLBACK_DOWNLOAD";
 
-	public static final String CALLBACK_CMD_PROXY = "CALLBACK_PROXY";
-
 	public static final String CALLBACK_CMD_STOP = "CALLBACK_STOP";
 
 	public static final String UPLOAD_FILE_CHANNEL = "UPLOAD_FILE_CHANNEL";
 
-	public static final String CALLBACK_CMD_MOBILE_POSITION = "CALLBACK_CMD_MOBILE_POSITION";
+	public static final String CALLBACK_CMD_MOBILEPOSITION = "CALLBACK_MOBILEPOSITION";
 
 	public static final String CALLBACK_CMD_PRESETQUERY = "CALLBACK_PRESETQUERY";
 
@@ -53,50 +51,31 @@ public class DeferredResultHolder {
 
 	public static final String CALLBACK_CMD_BROADCAST = "CALLBACK_BROADCAST";
 
-	public static final String CALLBACK_CMD_SNAP= "CALLBACK_SNAP";
-
-	private Map<String, Map<String, DeferredResultEx>> map = new ConcurrentHashMap<>();
+	private Map<String, Map<String, DeferredResult>> map = new ConcurrentHashMap<>();
 
 
-	public void put(String key, String id, DeferredResultEx result) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(key);
+	public void put(String key, String id, DeferredResult result) {
+		Map<String, DeferredResult> deferredResultMap = map.get(key);
 		if (deferredResultMap == null) {
 			deferredResultMap = new ConcurrentHashMap<>();
 			map.put(key, deferredResultMap);
 		}
 		deferredResultMap.put(id, result);
 	}
-
-	public void put(String key, String id, DeferredResult result) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(key);
-		if (deferredResultMap == null) {
-			deferredResultMap = new ConcurrentHashMap<>();
-			map.put(key, deferredResultMap);
-		}
-		deferredResultMap.put(id, new DeferredResultEx(result));
-	}
 	
-	public DeferredResultEx get(String key, String id) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(key);
-		if (deferredResultMap == null || ObjectUtils.isEmpty(id)) {
+	public DeferredResult get(String key, String id) {
+		Map<String, DeferredResult> deferredResultMap = map.get(key);
+		if (deferredResultMap == null) {
 			return null;
 		}
 		return deferredResultMap.get(id);
-	}
-
-	public Collection<DeferredResultEx> getAllByKey(String key) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(key);
-		if (deferredResultMap == null) {
-			return null;
-		}
-		return deferredResultMap.values();
 	}
 
 	public boolean exist(String key, String id){
 		if (key == null) {
 			return false;
 		}
-		Map<String, DeferredResultEx> deferredResultMap = map.get(key);
+		Map<String, DeferredResult> deferredResultMap = map.get(key);
 		if (id == null) {
 			return deferredResultMap != null;
 		}else {
@@ -109,15 +88,15 @@ public class DeferredResultHolder {
 	 * @param msg
 	 */
 	public void invokeResult(RequestMessage msg) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(msg.getKey());
+		Map<String, DeferredResult> deferredResultMap = map.get(msg.getKey());
 		if (deferredResultMap == null) {
 			return;
 		}
-		DeferredResultEx result = deferredResultMap.get(msg.getId());
+		DeferredResult result = deferredResultMap.get(msg.getId());
 		if (result == null) {
 			return;
 		}
-		result.getDeferredResult().setResult(msg.getData());
+		result.setResult(new ResponseEntity<>(msg.getData(),HttpStatus.OK));
 		deferredResultMap.remove(msg.getId());
 		if (deferredResultMap.size() == 0) {
 			map.remove(msg.getKey());
@@ -129,32 +108,19 @@ public class DeferredResultHolder {
 	 * @param msg
 	 */
 	public void invokeAllResult(RequestMessage msg) {
-		Map<String, DeferredResultEx> deferredResultMap = map.get(msg.getKey());
+		Map<String, DeferredResult> deferredResultMap = map.get(msg.getKey());
 		if (deferredResultMap == null) {
 			return;
 		}
-		synchronized (this) {
-			deferredResultMap = map.get(msg.getKey());
-			if (deferredResultMap == null) {
+		Set<String> ids = deferredResultMap.keySet();
+		for (String id : ids) {
+			DeferredResult result = deferredResultMap.get(id);
+			if (result == null) {
 				return;
 			}
-			Set<String> ids = deferredResultMap.keySet();
-			for (String id : ids) {
-				DeferredResultEx result = deferredResultMap.get(id);
-				if (result == null) {
-					return;
-				}
-				if (result.getFilter() != null) {
-					Object handler = result.getFilter().handler(msg.getData());
-					result.getDeferredResult().setResult(handler);
-				}else {
-					result.getDeferredResult().setResult(msg.getData());
-				}
-
-			}
-			map.remove(msg.getKey());
+			result.setResult(ResponseEntity.ok().body(msg.getData()));
 		}
+		map.remove(msg.getKey());
+
 	}
-
-
 }

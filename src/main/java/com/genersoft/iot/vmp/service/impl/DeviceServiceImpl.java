@@ -1,41 +1,28 @@
 package com.genersoft.iot.vmp.service.impl;
 
-import com.baomidou.dynamic.datasource.annotation.DS;
-import com.genersoft.iot.vmp.common.VideoManagerConstants;
 import com.genersoft.iot.vmp.conf.DynamicTask;
-import com.genersoft.iot.vmp.conf.UserSetting;
-import com.genersoft.iot.vmp.conf.exception.SsrcTransactionNotFoundException;
 import com.genersoft.iot.vmp.gb28181.bean.*;
 import com.genersoft.iot.vmp.gb28181.session.VideoStreamSessionManager;
 import com.genersoft.iot.vmp.gb28181.task.ISubscribeTask;
 import com.genersoft.iot.vmp.gb28181.task.impl.CatalogSubscribeTask;
 import com.genersoft.iot.vmp.gb28181.task.impl.MobilePositionSubscribeTask;
 import com.genersoft.iot.vmp.gb28181.transmit.cmd.ISIPCommander;
-import com.genersoft.iot.vmp.gb28181.transmit.cmd.impl.SIPCommander;
 import com.genersoft.iot.vmp.gb28181.transmit.event.request.impl.message.response.cmd.CatalogResponseMessageHandler;
-import com.genersoft.iot.vmp.service.IDeviceChannelService;
+import com.genersoft.iot.vmp.gb28181.utils.Coordtransform;
 import com.genersoft.iot.vmp.service.IDeviceService;
-import com.genersoft.iot.vmp.service.IInviteStreamService;
 import com.genersoft.iot.vmp.service.IMediaServerService;
 import com.genersoft.iot.vmp.storager.IRedisCatchStorage;
+import com.genersoft.iot.vmp.storager.IVideoManagerStorage;
 import com.genersoft.iot.vmp.storager.dao.DeviceChannelMapper;
 import com.genersoft.iot.vmp.storager.dao.DeviceMapper;
-import com.genersoft.iot.vmp.storager.dao.PlatformChannelMapper;
 import com.genersoft.iot.vmp.utils.DateUtil;
 import com.genersoft.iot.vmp.vmanager.bean.BaseTree;
-import com.genersoft.iot.vmp.vmanager.bean.ResourceBaseInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
-import javax.sip.InvalidArgumentException;
-import javax.sip.SipException;
-import java.text.ParseException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,13 +33,12 @@ import java.util.concurrent.TimeUnit;
  * 设备业务（目录订阅）
  */
 @Service
-@DS("master")
 public class DeviceServiceImpl implements IDeviceService {
 
     private final static Logger logger = LoggerFactory.getLogger(DeviceServiceImpl.class);
 
-    @Autowired
-    private SIPCommander cmder;
+    private final String  registerExpireTaskKeyPrefix = "device-register-expire-";
+
     @Autowired
     private DynamicTask dynamicTask;
 
@@ -66,28 +52,13 @@ public class DeviceServiceImpl implements IDeviceService {
     private IRedisCatchStorage redisCatchStorage;
 
     @Autowired
-    private IInviteStreamService inviteStreamService;
-
-    @Autowired
     private DeviceMapper deviceMapper;
-
-    @Autowired
-    private PlatformChannelMapper platformChannelMapper;
-
-    @Autowired
-    private IDeviceChannelService deviceChannelService;
 
     @Autowired
     private DeviceChannelMapper deviceChannelMapper;
 
     @Autowired
-    DataSourceTransactionManager dataSourceTransactionManager;
-
-    @Autowired
-    TransactionDefinition transactionDefinition;
-
-    @Autowired
-    private UserSetting userSetting;
+    private IVideoManagerStorage storage;
 
     @Autowired
     private ISIPCommander commander;
@@ -99,7 +70,7 @@ public class DeviceServiceImpl implements IDeviceService {
     private IMediaServerService mediaServerService;
 
     @Override
-    public void online(Device device, SipTransactionInfo sipTransactionInfo) {
+    public void online(Device device) {
         logger.info("[设备上线] deviceId：{}->{}:{}", device.getDeviceId(), device.getIp(), device.getPort());
         Device deviceInRedis = redisCatchStorage.getDevice(device.getDeviceId());
         Device deviceInDb = deviceMapper.getDeviceByDeviceId(device.getDeviceId());
@@ -107,127 +78,55 @@ public class DeviceServiceImpl implements IDeviceService {
         String now = DateUtil.getNow();
         if (deviceInRedis != null && deviceInDb == null) {
             // redis 存在脏数据
-            inviteStreamService.clearInviteInfo(device.getDeviceId());
+            redisCatchStorage.clearCatchByDeviceId(device.getDeviceId());
         }
         device.setUpdateTime(now);
-        device.setKeepaliveTime(now);
-        if (device.getKeepaliveIntervalTime() == 0) {
-            // 默认心跳间隔60
-            device.setKeepaliveIntervalTime(60);
-        }
-        if (sipTransactionInfo != null) {
-            device.setSipTransactionInfo(sipTransactionInfo);
-        }else {
-            if (deviceInRedis != null) {
-                device.setSipTransactionInfo(deviceInRedis.getSipTransactionInfo());
-            }
-        }
+        device.setOnline(1);
 
-        // 第一次上线 或则设备之前是离线状态--进行通道同步和设备信息查询
-        if (deviceInDb == null) {
-            device.setOnLine(true);
+        // 第一次上线
+        if (device.getCreateTime() == null) {
             device.setCreateTime(now);
-            device.setUpdateTime(now);
             logger.info("[设备上线,首次注册]: {}，查询设备信息以及通道信息", device.getDeviceId());
             deviceMapper.add(device);
             redisCatchStorage.updateDevice(device);
-            try {
-                commander.deviceInfoQuery(device);
-            } catch (InvalidArgumentException | SipException | ParseException e) {
-                logger.error("[命令发送失败] 查询设备信息: {}", e.getMessage());
-            }
+            commander.deviceInfoQuery(device);
             sync(device);
         }else {
-
-            if (deviceInDb != null) {
-                device.setSwitchPrimarySubStream(deviceInDb.isSwitchPrimarySubStream());
-            }
-            if(!device.isOnLine()){
-                device.setOnLine(true);
-                device.setCreateTime(now);
-                deviceMapper.update(device);
-                redisCatchStorage.updateDevice(device);
-                if (userSetting.getSyncChannelOnDeviceOnline()) {
-                    logger.info("[设备上线,离线状态下重新注册]: {}，查询设备信息以及通道信息", device.getDeviceId());
-                    try {
-                        commander.deviceInfoQuery(device);
-                    } catch (InvalidArgumentException | SipException | ParseException e) {
-                        logger.error("[命令发送失败] 查询设备信息: {}", e.getMessage());
-                    }
-                    sync(device);
-                    // TODO 如果设备下的通道级联到了其他平台，那么需要发送事件或者notify给上级平台
-                }
-                // 上线添加订阅
-                if (device.getSubscribeCycleForCatalog() > 0) {
-                    // 查询在线设备那些开启了订阅，为设备开启定时的目录订阅
-                    addCatalogSubscribe(device);
-                }
-                if (device.getSubscribeCycleForMobilePosition() > 0) {
-                    addMobilePositionSubscribe(device);
-                }
-                if (userSetting.getDeviceStatusNotify()) {
-                    // 发送redis消息
-                    redisCatchStorage.sendDeviceOrChannelStatus(device.getDeviceId(), null, true);
-                }
-
-            }else {
-                if (deviceChannelMapper.queryAllChannels(device.getDeviceId()).size() == 0) {
-                    logger.info("[设备上线]: {}，通道数为0,查询通道信息", device.getDeviceId());
-                    sync(device);
-                }
-
-                deviceMapper.update(device);
-                redisCatchStorage.updateDevice(device);
-            }
-
+            deviceMapper.update(device);
+            redisCatchStorage.updateDevice(device);
         }
 
+        // 上线添加订阅
+        if (device.getSubscribeCycleForCatalog() > 0) {
+            // 查询在线设备那些开启了订阅，为设备开启定时的目录订阅
+            addCatalogSubscribe(device);
+        }
+        if (device.getSubscribeCycleForMobilePosition() > 0) {
+            addMobilePositionSubscribe(device);
+        }
         // 刷新过期任务
-        String registerExpireTaskKey = VideoManagerConstants.REGISTER_EXPIRE_TASK_KEY_PREFIX + device.getDeviceId();
-        // 如果第一次注册那么必须在60 * 3时间内收到一个心跳，否则设备离线
-        dynamicTask.startDelay(registerExpireTaskKey, ()-> offline(device.getDeviceId(), "首次注册后未能收到心跳"), device.getKeepaliveIntervalTime() * 1000 * 3);
-
-//
-//        try {
-//            cmder.alarmSubscribe(device, 600, "0", "4", "0", "2023-7-27T00:00:00", "2023-7-28T00:00:00");
-//        } catch (InvalidArgumentException e) {
-//            throw new RuntimeException(e);
-//        } catch (SipException e) {
-//            throw new RuntimeException(e);
-//        } catch (ParseException e) {
-//            throw new RuntimeException(e);
-//        }
-
+        String registerExpireTaskKey = registerExpireTaskKeyPrefix + device.getDeviceId();
+        dynamicTask.startDelay(registerExpireTaskKey, ()-> offline(device.getDeviceId()), device.getExpires() * 1000);
     }
 
     @Override
-    public void offline(String deviceId, String reason) {
-        logger.warn("[设备离线]，{}, device：{}", reason, deviceId);
+    public void offline(String deviceId) {
         Device device = deviceMapper.getDeviceByDeviceId(deviceId);
         if (device == null) {
             return;
         }
-        String registerExpireTaskKey = VideoManagerConstants.REGISTER_EXPIRE_TASK_KEY_PREFIX + deviceId;
+        String registerExpireTaskKey = registerExpireTaskKeyPrefix + deviceId;
         dynamicTask.stop(registerExpireTaskKey);
-        if (device.isOnLine()) {
-            if (userSetting.getDeviceStatusNotify()) {
-                // 发送redis消息
-                redisCatchStorage.sendDeviceOrChannelStatus(device.getDeviceId(), null, false);
-            }
-        }
-
-        device.setOnLine(false);
+        device.setOnline(0);
         redisCatchStorage.updateDevice(device);
         deviceMapper.update(device);
-        //进行通道离线
-//        deviceChannelMapper.offlineByDeviceId(deviceId);
         // 离线释放所有ssrc
         List<SsrcTransaction> ssrcTransactions = streamSession.getSsrcTransactionForAll(deviceId, null, null, null);
         if (ssrcTransactions != null && ssrcTransactions.size() > 0) {
             for (SsrcTransaction ssrcTransaction : ssrcTransactions) {
                 mediaServerService.releaseSsrc(ssrcTransaction.getMediaServerId(), ssrcTransaction.getSsrc());
-                mediaServerService.closeRTPServer(ssrcTransaction.getMediaServerId(), ssrcTransaction.getStream());
-                streamSession.removeByCallId(deviceId, ssrcTransaction.getChannelId(), ssrcTransaction.getCallId());
+                mediaServerService.closeRTPServer(deviceId, ssrcTransaction.getChannelId(), ssrcTransaction.getStream());
+                streamSession.remove(deviceId, ssrcTransaction.getChannelId(), ssrcTransaction.getStream());
             }
         }
         // 移除订阅
@@ -243,7 +142,7 @@ public class DeviceServiceImpl implements IDeviceService {
         logger.info("[添加目录订阅] 设备{}", device.getDeviceId());
         // 添加目录订阅
         CatalogSubscribeTask catalogSubscribeTask = new CatalogSubscribeTask(device, sipCommander, dynamicTask);
-        // 刷新订阅
+        // 提前开始刷新订阅
         int subscribeCycleForCatalog = Math.max(device.getSubscribeCycleForCatalog(),30);
         // 设置最小值为30
         dynamicTask.startCron(device.getDeviceId() + "catalog", catalogSubscribeTask, (subscribeCycleForCatalog -1) * 1000);
@@ -257,7 +156,7 @@ public class DeviceServiceImpl implements IDeviceService {
         }
         logger.info("[移除目录订阅]: {}", device.getDeviceId());
         String taskKey = device.getDeviceId() + "catalog";
-        if (device.isOnLine()) {
+        if (device.getOnline() == 1) {
             Runnable runnable = dynamicTask.get(taskKey);
             if (runnable instanceof ISubscribeTask) {
                 ISubscribeTask subscribeTask = (ISubscribeTask) runnable;
@@ -278,8 +177,8 @@ public class DeviceServiceImpl implements IDeviceService {
         MobilePositionSubscribeTask mobilePositionSubscribeTask = new MobilePositionSubscribeTask(device, sipCommander, dynamicTask);
         // 设置最小值为30
         int subscribeCycleForCatalog = Math.max(device.getSubscribeCycleForMobilePosition(),30);
-        // 刷新订阅
-        dynamicTask.startCron(device.getDeviceId() + "mobile_position" , mobilePositionSubscribeTask, subscribeCycleForCatalog * 1000);
+        // 提前开始刷新订阅
+        dynamicTask.startCron(device.getDeviceId() + "mobile_position" , mobilePositionSubscribeTask, (subscribeCycleForCatalog -1 ) * 1000);
         return true;
     }
 
@@ -290,7 +189,7 @@ public class DeviceServiceImpl implements IDeviceService {
         }
         logger.info("[移除移动位置订阅]: {}", device.getDeviceId());
         String taskKey = device.getDeviceId() + "mobile_position";
-        if (device.isOnLine()) {
+        if (device.getOnline() == 1) {
             Runnable runnable = dynamicTask.get(taskKey);
             if (runnable instanceof ISubscribeTask) {
                 ISubscribeTask subscribeTask = (ISubscribeTask) runnable;
@@ -319,28 +218,15 @@ public class DeviceServiceImpl implements IDeviceService {
         }
         int sn = (int)((Math.random()*9+1)*100000);
         catalogResponseMessageHandler.setChannelSyncReady(device, sn);
-        try {
-            sipCommander.catalogQuery(device, sn, event -> {
-                String errorMsg = String.format("同步通道失败，错误码： %s, %s", event.statusCode, event.msg);
-                catalogResponseMessageHandler.setChannelSyncEnd(device.getDeviceId(), errorMsg);
-            });
-        } catch (SipException | InvalidArgumentException | ParseException e) {
-            logger.error("[同步通道], 信令发送失败：{}", e.getMessage() );
-            String errorMsg = String.format("同步通道失败，信令发送失败： %s", e.getMessage());
+        sipCommander.catalogQuery(device, sn, event -> {
+            String errorMsg = String.format("同步通道失败，错误码： %s, %s", event.statusCode, event.msg);
             catalogResponseMessageHandler.setChannelSyncEnd(device.getDeviceId(), errorMsg);
-        }
+        });
     }
 
     @Override
-    public Device getDevice(String deviceId) {
-        Device device = redisCatchStorage.getDevice(deviceId);
-        if (device == null) {
-            device = deviceMapper.getDeviceByDeviceId(deviceId);
-            if (device != null) {
-                redisCatchStorage.updateDevice(device);
-            }
-        }
-        return device;
+    public Device queryDevice(String deviceId) {
+        return deviceMapper.getDeviceByDeviceId(deviceId);
     }
 
     @Override
@@ -357,14 +243,10 @@ public class DeviceServiceImpl implements IDeviceService {
 
     @Override
     public void checkDeviceStatus(Device device) {
-        if (device == null || !device.isOnLine()) {
+        if (device == null || device.getOnline() == 0) {
             return;
         }
-        try {
-            sipCommander.deviceStatusQuery(device, null);
-        } catch (InvalidArgumentException | SipException | ParseException e) {
-            logger.error("[命令发送失败] 设备状态查询: {}", e.getMessage());
-        }
+        sipCommander.deviceStatusQuery(device, null);
 
     }
 
@@ -376,12 +258,62 @@ public class DeviceServiceImpl implements IDeviceService {
     @Override
     public void updateDevice(Device device) {
 
+        Device deviceInStore = deviceMapper.getDeviceByDeviceId(device.getDeviceId());
+        if (deviceInStore == null) {
+            logger.warn("更新设备时未找到设备信息");
+            return;
+        }
+        if (!StringUtils.isEmpty(device.getName())) {
+            deviceInStore.setName(device.getName());
+        }
+        if (!StringUtils.isEmpty(device.getCharset())) {
+            deviceInStore.setCharset(device.getCharset());
+        }
+        if (!StringUtils.isEmpty(device.getMediaServerId())) {
+            deviceInStore.setMediaServerId(device.getMediaServerId());
+        }
+
+        //  目录订阅相关的信息
+        if (device.getSubscribeCycleForCatalog() > 0) {
+            if (deviceInStore.getSubscribeCycleForCatalog() == 0 || deviceInStore.getSubscribeCycleForCatalog() != device.getSubscribeCycleForCatalog()) {
+                deviceInStore.setSubscribeCycleForCatalog(device.getSubscribeCycleForCatalog());
+                // 开启订阅
+                addCatalogSubscribe(deviceInStore);
+            }
+        }else if (device.getSubscribeCycleForCatalog() == 0) {
+            if (deviceInStore.getSubscribeCycleForCatalog() != 0) {
+                deviceInStore.setSubscribeCycleForCatalog(device.getSubscribeCycleForCatalog());
+                // 取消订阅
+                removeCatalogSubscribe(deviceInStore);
+            }
+        }
+
+        // 移动位置订阅相关的信息
+        if (device.getSubscribeCycleForMobilePosition() > 0) {
+            if (deviceInStore.getSubscribeCycleForMobilePosition() == 0 || deviceInStore.getSubscribeCycleForMobilePosition() != device.getSubscribeCycleForMobilePosition()) {
+                deviceInStore.setMobilePositionSubmissionInterval(device.getMobilePositionSubmissionInterval());
+                deviceInStore.setSubscribeCycleForMobilePosition(device.getSubscribeCycleForMobilePosition());
+                // 开启订阅
+                addMobilePositionSubscribe(deviceInStore);
+            }
+        }else if (device.getSubscribeCycleForMobilePosition() == 0) {
+            if (deviceInStore.getSubscribeCycleForMobilePosition() != 0) {
+                // 取消订阅
+                removeMobilePositionSubscribe(deviceInStore);
+            }
+        }
+        // 坐标系变化，需要重新计算GCJ02坐标和WGS84坐标
+        if (!deviceInStore.getGeoCoordSys().equals(device.getGeoCoordSys())) {
+            updateDeviceChannelGeoCoordSys(device);
+        }
+
         String now = DateUtil.getNow();
         device.setUpdateTime(now);
         device.setCharset(device.getCharset().toUpperCase());
         device.setUpdateTime(DateUtil.getNow());
         if (deviceMapper.update(device) > 0) {
             redisCatchStorage.updateDevice(device);
+
         }
     }
 
@@ -391,12 +323,23 @@ public class DeviceServiceImpl implements IDeviceService {
     private void updateDeviceChannelGeoCoordSys(Device device) {
        List<DeviceChannel> deviceChannels =  deviceChannelMapper.getAllChannelWithCoordinate(device.getDeviceId());
        if (deviceChannels.size() > 0) {
-           List<DeviceChannel> deviceChannelsForStore = new ArrayList<>();
            for (DeviceChannel deviceChannel : deviceChannels) {
-               deviceChannelsForStore.add(deviceChannelService.updateGps(deviceChannel, device));
+               if ("WGS84".equals(device.getGeoCoordSys())) {
+                   deviceChannel.setLongitudeWgs84(deviceChannel.getLongitude());
+                   deviceChannel.setLatitudeWgs84(deviceChannel.getLatitude());
+                   Double[] position = Coordtransform.WGS84ToGCJ02(deviceChannel.getLongitude(), deviceChannel.getLatitude());
+                   deviceChannel.setLongitudeGcj02(position[0]);
+                   deviceChannel.setLatitudeGcj02(position[1]);
+               }else if ("GCJ02".equals(device.getGeoCoordSys())) {
+                   deviceChannel.setLongitudeGcj02(deviceChannel.getLongitude());
+                   deviceChannel.setLatitudeGcj02(deviceChannel.getLatitude());
+                   Double[] position = Coordtransform.GCJ02ToWGS84(deviceChannel.getLongitude(), deviceChannel.getLatitude());
+                   deviceChannel.setLongitudeWgs84(position[0]);
+                   deviceChannel.setLatitudeWgs84(position[1]);
+               }
            }
-           deviceChannelService.updateChannels(device.getDeviceId(), deviceChannelsForStore);
        }
+        storage.updateChannels(device.getDeviceId(), deviceChannels);
     }
 
 
@@ -406,11 +349,52 @@ public class DeviceServiceImpl implements IDeviceService {
         if (device == null) {
             return null;
         }
-        if (ObjectUtils.isEmpty(parentId) ) {
-            parentId = deviceId;
+        if (parentId == null || parentId.equals(deviceId)) {
+            // 字根节点开始查询
+            List<DeviceChannel> rootNodes = getRootNodes(deviceId, "CivilCode".equals(device.getTreeType()), true, !onlyCatalog);
+            return transportChannelsToTree(rootNodes, "");
         }
-        List<DeviceChannel> rootNodes = deviceChannelMapper.getSubChannelsByDeviceId(deviceId, parentId, onlyCatalog);
-        return transportChannelsToTree(rootNodes, "");
+
+        if ("CivilCode".equals(device.getTreeType())) {
+            if (parentId.length()%2 != 0) {
+                return null;
+            }
+            // 使用行政区划展示树
+            if (parentId.length() > 10) {
+                // TODO 可能是行政区划与业务分组混杂的情形
+                return null;
+            }
+
+            if (parentId.length() == 10 ) {
+                if (onlyCatalog) {
+                    return null;
+                }
+                // parentId为行业编码， 其下不会再有行政区划
+                List<DeviceChannel> channels = deviceChannelMapper.getChannelsByCivilCode(deviceId, parentId);
+                List<BaseTree<DeviceChannel>> trees = transportChannelsToTree(channels, parentId);
+                return trees;
+            }
+            // 查询其下的行政区划和摄像机
+            List<DeviceChannel> channelsForCivilCode = deviceChannelMapper.getChannelsWithCivilCodeAndLength(deviceId, parentId, parentId.length() + 2);
+            if (!onlyCatalog) {
+                List<DeviceChannel> channels = deviceChannelMapper.getChannelsByCivilCode(deviceId, parentId);
+                channelsForCivilCode.addAll(channels);
+            }
+            List<BaseTree<DeviceChannel>> trees = transportChannelsToTree(channelsForCivilCode, parentId);
+            return trees;
+
+        }
+        // 使用业务分组展示树
+        if ("BusinessGroup".equals(device.getTreeType())) {
+            if (parentId.length() < 14 ) {
+                return null;
+            }
+            List<DeviceChannel> deviceChannels = deviceChannelMapper.queryChannels(deviceId, parentId, null, null, null);
+            List<BaseTree<DeviceChannel>> trees = transportChannelsToTree(deviceChannels, parentId);
+            return trees;
+        }
+
+        return null;
     }
 
     @Override
@@ -419,11 +403,42 @@ public class DeviceServiceImpl implements IDeviceService {
         if (device == null) {
             return null;
         }
-        if (ObjectUtils.isEmpty(parentId) || parentId.equals(deviceId)) {
-            return deviceChannelMapper.getSubChannelsByDeviceId(deviceId, null, false);
-        }else {
-            return deviceChannelMapper.getSubChannelsByDeviceId(deviceId, parentId, false);
+        if (parentId == null || parentId.equals(deviceId)) {
+            // 字根节点开始查询
+            List<DeviceChannel> rootNodes = getRootNodes(deviceId, "CivilCode".equals(device.getTreeType()), false, true);
+            return rootNodes;
         }
+
+        if ("CivilCode".equals(device.getTreeType())) {
+            if (parentId.length()%2 != 0) {
+                return null;
+            }
+            // 使用行政区划展示树
+            if (parentId.length() > 10) {
+                // TODO 可能是行政区划与业务分组混杂的情形
+                return null;
+            }
+
+            if (parentId.length() == 10 ) {
+                // parentId为行业编码， 其下不会再有行政区划
+                List<DeviceChannel> channels = deviceChannelMapper.getChannelsByCivilCode(deviceId, parentId);
+                return channels;
+            }
+            // 查询其下的行政区划和摄像机
+            List<DeviceChannel> channels = deviceChannelMapper.getChannelsByCivilCode(deviceId, parentId);
+            return channels;
+
+        }
+        // 使用业务分组展示树
+        if ("BusinessGroup".equals(device.getTreeType())) {
+            if (parentId.length() < 14 ) {
+                return null;
+            }
+            List<DeviceChannel> deviceChannels = deviceChannelMapper.queryChannels(deviceId, parentId, null, null, null);
+            return deviceChannels;
+        }
+
+        return null;
     }
 
     private List<BaseTree<DeviceChannel>> transportChannelsToTree(List<DeviceChannel> channels, String parentId) {
@@ -443,21 +458,11 @@ public class DeviceServiceImpl implements IDeviceService {
             node.setPid(parentId);
             node.setBasicData(channel);
             node.setParent(false);
-            if (channel.getChannelId().length() <= 8) {
-                node.setParent(true);
+            if (channel.getChannelId().length() > 8) {
+                String gbCodeType = channel.getChannelId().substring(10, 13);
+                node.setParent(gbCodeType.equals(ChannelIdType.BUSINESS_GROUP) || gbCodeType.equals(ChannelIdType.VIRTUAL_ORGANIZATION) );
             }else {
-                if (channel.getChannelId().length() != 20) {
-                    node.setParent(channel.getParental() == 1);
-                }else {
-                    try {
-                        int type = Integer.parseInt(channel.getChannelId().substring(10, 13));
-                        if (type == 215 || type == 216 || type == 200) {
-                            node.setParent(true);
-                        }
-                    }catch (NumberFormatException e) {
-                        node.setParent(false);
-                    }
-                }
+                node.setParent(true);
             }
             treeNotes.add(node);
         }
@@ -465,153 +470,51 @@ public class DeviceServiceImpl implements IDeviceService {
         return treeNotes;
     }
 
-    @Override
-    public boolean isExist(String deviceId) {
-        return deviceMapper.getDeviceByDeviceId(deviceId) != null;
-    }
-
-    @Override
-    public void addDevice(Device device) {
-        device.setOnLine(false);
-        device.setCreateTime(DateUtil.getNow());
-        device.setUpdateTime(DateUtil.getNow());
-        deviceMapper.addCustomDevice(device);
-    }
-
-    @Override
-    public void updateCustomDevice(Device device) {
-        Device deviceInStore = deviceMapper.getDeviceByDeviceId(device.getDeviceId());
-        if (deviceInStore == null) {
-            logger.warn("更新设备时未找到设备信息");
-            return;
+    private List<DeviceChannel> getRootNodes(String deviceId, boolean isCivilCode, boolean haveCatalog, boolean haveChannel) {
+        if (!haveCatalog && !haveChannel) {
+            return null;
         }
-        if(deviceInStore.isSwitchPrimarySubStream() != device.isSwitchPrimarySubStream()){
-            //当修改设备的主子码流开关时，需要校验是否存在流，如果存在流则直接关闭
-            List<SsrcTransaction> ssrcTransactionForAll = streamSession.getSsrcTransactionForAll(device.getDeviceId(), null, null, null);
-            if(ssrcTransactionForAll != null){
-                for (SsrcTransaction ssrcTransaction: ssrcTransactionForAll) {
-                    try {
-                        cmder.streamByeCmd(device, ssrcTransaction.getChannelId(), ssrcTransaction.getStream(), null, null);
-                    } catch (InvalidArgumentException | SsrcTransactionNotFoundException | ParseException | SipException e) {
-                        throw new RuntimeException(e);
+        List<DeviceChannel> result = new ArrayList<>();
+        if (isCivilCode) {
+            // 使用行政区划
+            Integer length= deviceChannelMapper.getChannelMinLength(deviceId);
+            if (length == null) {
+                return null;
+            }
+            if (length <= 10) {
+                if (haveCatalog) {
+                    List<DeviceChannel> provinceNode = deviceChannelMapper.getChannelsWithCivilCodeAndLength(deviceId, null, length);
+                    if (provinceNode != null && provinceNode.size() > 0) {
+                        result.addAll(provinceNode);
+                    }
+                }
+
+                if (haveChannel) {
+                    // 查询那些civilCode不在通道中的不规范通道，放置在根目录
+                    List<DeviceChannel> nonstandardNode = deviceChannelMapper.getChannelWithoutCiviCode(deviceId);
+                    if (nonstandardNode != null && nonstandardNode.size() > 0) {
+                        result.addAll(nonstandardNode);
+                    }
+                }
+            }else {
+                if (haveChannel) {
+                    List<DeviceChannel> deviceChannels = deviceChannelMapper.queryChannels(deviceId, null, null, null, null);
+                    if (deviceChannels != null && deviceChannels.size() > 0) {
+                        result.addAll(deviceChannels);
                     }
                 }
             }
-            deviceChannelMapper.clearPlay(device.getDeviceId());
-            inviteStreamService.clearInviteInfo(device.getDeviceId());
-        }
 
-        if (!ObjectUtils.isEmpty(device.getName())) {
-            deviceInStore.setName(device.getName());
-        }
-        if (!ObjectUtils.isEmpty(device.getCharset())) {
-            deviceInStore.setCharset(device.getCharset());
-        }
-        if (!ObjectUtils.isEmpty(device.getMediaServerId())) {
-            deviceInStore.setMediaServerId(device.getMediaServerId());
-        }
-        if (!ObjectUtils.isEmpty(device.getCharset())) {
-            deviceInStore.setCharset(device.getCharset());
-        }
-        if (!ObjectUtils.isEmpty(device.getSdpIp())) {
-            deviceInStore.setSdpIp(device.getSdpIp());
-        }
-        if (!ObjectUtils.isEmpty(device.getPassword())) {
-            deviceInStore.setPassword(device.getPassword());
-        }
-        if (!ObjectUtils.isEmpty(device.getStreamMode())) {
-            deviceInStore.setStreamMode(device.getStreamMode());
-        }
-
-
-        //  目录订阅相关的信息
-        if (deviceInStore.getSubscribeCycleForCatalog() != device.getSubscribeCycleForCatalog()) {
-            if (device.getSubscribeCycleForCatalog() > 0) {
-                // 若已开启订阅，但订阅周期不同，则先取消
-                if (deviceInStore.getSubscribeCycleForCatalog() != 0) {
-                    removeCatalogSubscribe(deviceInStore);
-                }
-                // 开启订阅
-                deviceInStore.setSubscribeCycleForCatalog(device.getSubscribeCycleForCatalog());
-                addCatalogSubscribe(deviceInStore);
-            }else if (device.getSubscribeCycleForCatalog() == 0) {
-                // 取消订阅
-                deviceInStore.setSubscribeCycleForCatalog(device.getSubscribeCycleForCatalog());
-                removeCatalogSubscribe(deviceInStore);
-            }
-        }
-
-        // 移动位置订阅相关的信息
-        if (device.getSubscribeCycleForMobilePosition() > 0) {
-            if (deviceInStore.getSubscribeCycleForMobilePosition() == 0 || deviceInStore.getSubscribeCycleForMobilePosition() != device.getSubscribeCycleForMobilePosition()) {
-                deviceInStore.setMobilePositionSubmissionInterval(device.getMobilePositionSubmissionInterval());
-                deviceInStore.setSubscribeCycleForMobilePosition(device.getSubscribeCycleForMobilePosition());
-                // 开启订阅
-                addMobilePositionSubscribe(deviceInStore);
-            }
-        }else if (device.getSubscribeCycleForMobilePosition() == 0) {
-            if (deviceInStore.getSubscribeCycleForMobilePosition() != 0) {
-                deviceInStore.setMobilePositionSubmissionInterval(device.getMobilePositionSubmissionInterval());
-                deviceInStore.setSubscribeCycleForMobilePosition(device.getSubscribeCycleForMobilePosition());
-                // 取消订阅
-                removeMobilePositionSubscribe(deviceInStore);
-            }
-        }
-        if (deviceInStore.getGeoCoordSys() != null) {
-            // 坐标系变化，需要重新计算GCJ02坐标和WGS84坐标
-            if (!deviceInStore.getGeoCoordSys().equals(device.getGeoCoordSys())) {
-                deviceInStore.setGeoCoordSys(device.getGeoCoordSys());
-                updateDeviceChannelGeoCoordSys(deviceInStore);
-            }
         }else {
-            deviceInStore.setGeoCoordSys("WGS84");
-        }
-        if (device.getCharset() == null) {
-            deviceInStore.setCharset("GB2312");
-        }
-        //SSRC校验
-        deviceInStore.setSsrcCheck(device.isSsrcCheck());
-        //作为消息通道
-        deviceInStore.setAsMessageChannel(device.isAsMessageChannel());
-        
-        // 更新redis
-        deviceMapper.updateCustom(deviceInStore);
-        redisCatchStorage.removeDevice(deviceInStore.getDeviceId());
-    }
+            // 使用业务分组+虚拟组织
 
-    @Override
-    public boolean delete(String deviceId) {
-        TransactionStatus transactionStatus = dataSourceTransactionManager.getTransaction(transactionDefinition);
-        boolean result = false;
-        try {
-            platformChannelMapper.delChannelForDeviceId(deviceId);
-            deviceChannelMapper.cleanChannelsByDeviceId(deviceId);
-            if ( deviceMapper.del(deviceId) < 0 ) {
-                //事务回滚
-                dataSourceTransactionManager.rollback(transactionStatus);
+            // 只获取业务分组
+            List<DeviceChannel> deviceChannels = deviceChannelMapper.getBusinessGroups(deviceId, ChannelIdType.BUSINESS_GROUP);
+            if (deviceChannels != null && deviceChannels.size() > 0) {
+                result.addAll(deviceChannels);
             }
-            result = true;
-            dataSourceTransactionManager.commit(transactionStatus);     //手动提交
-        }catch (Exception e) {
-            dataSourceTransactionManager.rollback(transactionStatus);
-        }
-        if (result) {
-            redisCatchStorage.removeDevice(deviceId);
         }
         return result;
     }
-
-    @Override
-    public ResourceBaseInfo getOverview() {
-        List<Device> onlineDevices = deviceMapper.getOnlineDevices();
-        List<Device> all = deviceMapper.getAll();
-        return new ResourceBaseInfo(all.size(), onlineDevices.size());
-    }
-
-    @Override
-    public List<Device> getAll() {
-        return deviceMapper.getAll();
-    }
-
 
 }

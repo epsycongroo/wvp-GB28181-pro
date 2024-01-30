@@ -1,5 +1,3 @@
 spring:
-  application:
-    name: wvp
   profiles:
     active: local

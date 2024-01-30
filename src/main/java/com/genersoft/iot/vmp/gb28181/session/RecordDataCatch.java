@@ -1,7 +1,6 @@
 package com.genersoft.iot.vmp.gb28181.session;
 
 import com.genersoft.iot.vmp.gb28181.bean.*;
-import com.genersoft.iot.vmp.gb28181.event.record.RecordEndEventListener;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.DeferredResultHolder;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.RequestMessage;
 import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
@@ -24,17 +23,14 @@ public class RecordDataCatch {
 
     @Autowired
     private DeferredResultHolder deferredResultHolder;
-    @Autowired
-    private RecordEndEventListener recordEndEventListener;
 
 
-    public int put(String deviceId,String channelId, String sn, int sumNum, List<RecordItem> recordItems) {
+    public int put(String deviceId, String sn, int sumNum, List<RecordItem> recordItems) {
         String key = deviceId + sn;
         RecordInfo recordInfo = data.get(key);
         if (recordInfo == null) {
             recordInfo = new RecordInfo();
             recordInfo.setDeviceId(deviceId);
-            recordInfo.setChannelId(channelId);
             recordInfo.setSn(sn.trim());
             recordInfo.setSumNum(sumNum);
             recordInfo.setRecordList(Collections.synchronizedList(new ArrayList<>()));
@@ -64,14 +60,17 @@ public class RecordDataCatch {
                 // 处理录像数据， 返回给前端
                 String msgKey = DeferredResultHolder.CALLBACK_CMD_RECORDINFO + recordInfo.getDeviceId() + recordInfo.getSn();
 
+                WVPResult<RecordInfo> wvpResult = new WVPResult<>();
+                wvpResult.setCode(0);
+                wvpResult.setMsg("success");
                 // 对数据进行排序
                 Collections.sort(recordInfo.getRecordList());
+                wvpResult.setData(recordInfo);
 
                 RequestMessage msg = new RequestMessage();
                 msg.setKey(msgKey);
-                msg.setData(recordInfo);
+                msg.setData(wvpResult);
                 deferredResultHolder.invokeAllResult(msg);
-                recordEndEventListener.delEndEventHandler(recordInfo.getDeviceId(),recordInfo.getChannelId());
                 data.remove(key);
             }
         }

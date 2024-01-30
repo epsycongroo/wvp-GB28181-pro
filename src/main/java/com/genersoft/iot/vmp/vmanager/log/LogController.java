@@ -1,25 +1,27 @@
 package com.genersoft.iot.vmp.vmanager.log;
 
 import com.genersoft.iot.vmp.conf.UserSetting;
-import com.genersoft.iot.vmp.conf.exception.ControllerException;
-import com.genersoft.iot.vmp.conf.security.JwtUtils;
 import com.genersoft.iot.vmp.service.ILogService;
 import com.genersoft.iot.vmp.storager.dao.dto.LogDto;
 import com.genersoft.iot.vmp.utils.DateUtil;
-import com.genersoft.iot.vmp.vmanager.bean.ErrorCode;
+import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
 import com.github.pagehelper.PageInfo;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.util.ObjectUtils;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name  = "日志管理")
+import java.text.ParseException;
 
+@Api(tags = "日志管理")
+@CrossOrigin
 @RestController
 @RequestMapping("/api/log")
 public class LogController {
@@ -43,15 +45,17 @@ public class LogController {
      * @param endTime 结束时间
      * @return
      */
+    @ApiOperation("分页查询报警")
     @GetMapping("/all")
-    @Operation(summary = "分页查询日志", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "query", description = "查询内容", required = true)
-    @Parameter(name = "page", description = "当前页", required = true)
-    @Parameter(name = "count", description = "每页查询数量", required = true)
-    @Parameter(name = "type", description = "类型", required = true)
-    @Parameter(name = "startTime", description = "开始时间", required = true)
-    @Parameter(name = "endTime", description = "结束时间", required = true)
-    public PageInfo<LogDto> getAll(
+    @ApiImplicitParams({
+            @ApiImplicitParam(name="query", value = "查询内容", dataTypeClass = String.class),
+            @ApiImplicitParam(name="page", value = "当前页", required = true ,dataTypeClass = Integer.class),
+            @ApiImplicitParam(name="count", value = "每页查询数量", required = true ,dataTypeClass = Integer.class),
+            @ApiImplicitParam(name="type", value = "类型" ,dataTypeClass = String.class),
+            @ApiImplicitParam(name="startTime", value = "查询内容" ,dataTypeClass = String.class),
+            @ApiImplicitParam(name="endTime", value = "查询内容" ,dataTypeClass = String.class),
+    })
+    public ResponseEntity<PageInfo<LogDto>> getAll(
             @RequestParam int page,
             @RequestParam int count,
             @RequestParam(required = false)  String query,
@@ -59,37 +63,42 @@ public class LogController {
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime
     ) {
-        if (ObjectUtils.isEmpty(query)) {
+        if (StringUtils.isEmpty(query)) {
             query = null;
         }
-
-        if (!userSetting.getLogInDatabase()) {
+        if (StringUtils.isEmpty(startTime)) {
+            startTime = null;
+        }
+        if (StringUtils.isEmpty(endTime)) {
+            endTime = null;
+        }
+        if (!userSetting.getLogInDatebase()) {
             logger.warn("自动记录日志功能已关闭，查询结果可能不完整。");
         }
 
-        if (ObjectUtils.isEmpty(startTime)) {
-            startTime = null;
-        }else if (!DateUtil.verification(startTime, DateUtil.formatter) ){
-            throw new ControllerException(ErrorCode.ERROR400.getCode(), "startTime格式为" + DateUtil.PATTERN);
+        if (!DateUtil.verification(startTime, DateUtil.formatter) || !DateUtil.verification(endTime, DateUtil.formatter)){
+            return new ResponseEntity<>(null, HttpStatus.BAD_REQUEST);
         }
 
-        if (ObjectUtils.isEmpty(endTime)) {
-            endTime = null;
-        }else if (!DateUtil.verification(endTime, DateUtil.formatter) ){
-            throw new ControllerException(ErrorCode.ERROR400.getCode(), "endTime格式为" + DateUtil.PATTERN);
-        }
-
-        return logService.getAll(page, count, query, type, startTime, endTime);
+        PageInfo<LogDto> allLog = logService.getAll(page, count, query, type, startTime, endTime);
+        return new ResponseEntity<>(allLog, HttpStatus.OK);
     }
 
     /**
      *  清空日志
      *
      */
-    @Operation(summary = "清空日志", security = @SecurityRequirement(name = JwtUtils.HEADER))
+    @ApiOperation("清空日志")
     @DeleteMapping("/clear")
-    public void clear() {
-        logService.clear();
+    @ApiImplicitParams({})
+    public ResponseEntity<WVPResult<String>> clear() {
+
+        int count = logService.clear();
+        WVPResult wvpResult = new WVPResult();
+        wvpResult.setCode(0);
+        wvpResult.setMsg("success");
+        wvpResult.setData(count);
+        return new ResponseEntity<WVPResult<String>>(wvpResult, HttpStatus.OK);
     }
 
 }

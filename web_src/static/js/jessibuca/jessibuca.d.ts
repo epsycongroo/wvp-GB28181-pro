@@ -62,7 +62,7 @@ declare namespace Jessibuca {
         /**
          * 1. 当为`true`的时候：视频画面做等比缩放后,完全填充canvas区域,画面不被拉伸,没有黑边,但画面显示不全。等同于 `setScaleMode(2)`
          */
-        isFullResize?: boolean;
+        isFullSize?: boolean;
         /**
          * 1. 当为`true`的时候：ws协议不检验是否以.flv为依据，进行协议解析。
          */
@@ -120,7 +120,7 @@ declare namespace Jessibuca {
         /**
          * 加载过程中文案
          */
-        loadingText?: string;
+        loadingText?: boolean;
         /**
          * 背景图片
          */
@@ -561,9 +561,9 @@ declare class Jessibuca {
         buf: number;
         /** 当前视频帧率 */
         fps: number;
-        /** 当前音频码率，单位byte */
+        /** 当前音频码率，单位bit */
         abps: number;
-        /** 当前视频码率，单位byte */
+        /** 当前视频码率，单位bit */
         vbps: number;
         /** 当前视频帧pts，单位毫秒 */
         ts: number;

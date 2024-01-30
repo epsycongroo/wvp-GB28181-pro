@@ -1,6 +1,5 @@
 package com.genersoft.iot.vmp.service.impl;
 
-import com.baomidou.dynamic.datasource.annotation.DS;
 import com.genersoft.iot.vmp.gb28181.bean.DeviceAlarm;
 import com.genersoft.iot.vmp.media.zlm.dto.StreamProxyItem;
 import com.genersoft.iot.vmp.service.IDeviceAlarmService;
@@ -13,11 +12,11 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 @Service
-@DS("master")
 public class DeviceAlarmServiceImpl implements IDeviceAlarmService {
 
     @Autowired
     private DeviceAlarmMapper deviceAlarmMapper;
+
 
     @Override
     public PageInfo<DeviceAlarm> getAllAlarm(int page, int count, String deviceId, String alarmPriority, String alarmMethod, String alarmType, String startTime, String endTime) {

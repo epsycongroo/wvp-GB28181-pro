@@ -18,22 +18,13 @@ spring:
         timeout: 10000
     # [必选] jdbc数据库配置
     datasource:
-        dynamic:
-            primary: master
-            datasource:
-                master:
-                    type: com.zaxxer.hikari.HikariDataSource
-                    driver-class-name: com.mysql.cj.jdbc.Driver
-                    url: jdbc:mysql://127.0.0.1:3306/wvp2?useUnicode=true&characterEncoding=UTF8&rewriteBatchedStatements=true&serverTimezone=PRC&useSSL=false&allowMultiQueries=true
-                    username: root
-                    password: root123
-                    hikari:
-                        connection-timeout: 20000             # 是客户端等待连接池连接的最大毫秒数
-                        initialSize: 50                       # 连接池初始化连接数
-                        maximum-pool-size: 200                # 连接池最大连接数
-                        minimum-idle: 10                       # 连接池最小空闲连接数
-                        idle-timeout: 300000                  # 允许连接在连接池中空闲的最长时间（以毫秒为单位）
-                        max-lifetime: 1200000                 # 是池中连接关闭后的最长生命周期（以毫秒为单位)
+        # 使用mysql 打开23-28行注释， 删除29-36行
+         name: wvp
+         url: jdbc:mysql://127.0.0.1:3306/wvp?useUnicode=true&characterEncoding=UTF8&rewriteBatchedStatements=true&allowMultiQueries=true&useSSL=false&allowMultiQueries=true
+         username: root
+         password: root
+         type: com.alibaba.druid.pool.DruidDataSource
+         driver-class-name: com.mysql.cj.jdbc.Driver
 
 # [可选] WVP监听的HTTP端口, 网页和接口调用都是这个端口
 server:
@@ -41,10 +32,7 @@ server:
 
 # 作为28181服务器的配置
 sip:
-    # [必须修改] 本机的IP，对应你的网卡，监听什么ip就是使用什么网卡，
-    # 如果要监听多张网卡，可以使用逗号分隔多个IP， 例如： 192.168.1.4,10.0.0.4
-    # 如果不明白，就使用0.0.0.0，大部分情况都是可以的
-    # 请不要使用127.0.0.1，任何包括localhost在内的域名都是不可以的。
+    # [必须修改] 本机的IP
     ip: ${WVP_HOST:127.0.0.1}
     # [可选] 28181服务监听的端口
     port: ${WVP_PORT:5060}
@@ -80,9 +68,23 @@ media:
     record-assist-port: 18081
     sdp-ip: ${sip.ip}
     stream-ip: ${sip.ip}
+# [可选] 日志配置, 一般不需要改
+# [可选] 日志配置, 一般不需要改
+logging:
+    config: classpath:logback-spring-local.xml
 
 # [根据业务需求配置]
 user-settings:
     # 推流直播是否录制
     record-push-live: true
     auto-apply-play: true
+
+# 在线文档： swagger-ui（生产环境建议关闭）
+swagger-ui:
+    enabled: true
+
+# 版本信息， 不需修改
+version:
+    version: "@project.version@"
+    description: "@project.description@"
+    artifact-id: "@project.artifactId@"

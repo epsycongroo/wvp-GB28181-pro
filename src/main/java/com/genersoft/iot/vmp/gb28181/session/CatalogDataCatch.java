@@ -42,7 +42,7 @@ public class CatalogDataCatch {
             catalogData.setSn(sn);
             catalogData.setTotal(total);
             catalogData.setDevice(device);
-            catalogData.setChannelList(deviceChannelList);
+            catalogData.setChannelList(Collections.synchronizedList(new ArrayList<>()));
             catalogData.setStatus(CatalogData.CatalogDataStatus.runIng);
             catalogData.setLastTime(Instant.now());
             data.put(deviceId, catalogData);
@@ -84,11 +84,6 @@ public class CatalogDataCatch {
         syncStatus.setCurrent(catalogData.getChannelList().size());
         syncStatus.setTotal(catalogData.getTotal());
         syncStatus.setErrorMsg(catalogData.getErrorMsg());
-        if (catalogData.getStatus().equals(CatalogData.CatalogDataStatus.end)) {
-            syncStatus.setSyncIng(false);
-        }else {
-            syncStatus.setSyncIng(true);
-        }
         return syncStatus;
     }
 
@@ -109,18 +104,12 @@ public class CatalogDataCatch {
 
         for (String deviceId : keys) {
             CatalogData catalogData = data.get(deviceId);
-            if ( catalogData.getLastTime().isBefore(instantBefore5S)) {
-                // 超过五秒收不到消息任务超时， 只更新这一部分数据, 收到数据与声明的总数一致，则重置通道数据，数据不全则只对收到的数据做更新操作
+            if ( catalogData.getLastTime().isBefore(instantBefore5S)) { // 超过五秒收不到消息任务超时， 只更新这一部分数据
                 if (catalogData.getStatus().equals(CatalogData.CatalogDataStatus.runIng)) {
-                    if (catalogData.getTotal() == catalogData.getChannelList().size()) {
-                        storager.resetChannels(catalogData.getDevice().getDeviceId(), catalogData.getChannelList());
-                    }else {
-                        storager.updateChannels(catalogData.getDevice().getDeviceId(), catalogData.getChannelList());
-                    }
-                    String errorMsg = "更新成功，共" + catalogData.getTotal() + "条，已更新" + catalogData.getChannelList().size() + "条";
-                    catalogData.setErrorMsg(errorMsg);
+                    storager.resetChannels(catalogData.getDevice().getDeviceId(), catalogData.getChannelList());
                     if (catalogData.getTotal() != catalogData.getChannelList().size()) {
-
+                        String errorMsg = "更新成功，共" + catalogData.getTotal() + "条，已更新" + catalogData.getChannelList().size() + "条";
+                        catalogData.setErrorMsg(errorMsg);
                     }
                 }else if (catalogData.getStatus().equals(CatalogData.CatalogDataStatus.ready)) {
                     String errorMsg = "同步失败，等待回复超时";

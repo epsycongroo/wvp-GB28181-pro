@@ -1,13 +1,14 @@
 package com.genersoft.iot.vmp.conf;
 
-import org.apache.commons.lang3.ObjectUtils;
+import com.genersoft.iot.vmp.gb28181.task.ISubscribeTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -24,18 +25,20 @@ public class DynamicTask {
 
     private final Logger logger = LoggerFactory.getLogger(DynamicTask.class);
 
+    @Autowired
     private ThreadPoolTaskScheduler threadPoolTaskScheduler;
 
     private final Map<String, ScheduledFuture<?>> futureMap = new ConcurrentHashMap<>();
     private final Map<String, Runnable> runnableMap = new ConcurrentHashMap<>();
 
-    @PostConstruct
-    public void DynamicTask() {
-        threadPoolTaskScheduler = new ThreadPoolTaskScheduler();
-        threadPoolTaskScheduler.setPoolSize(300);
-        threadPoolTaskScheduler.setWaitForTasksToCompleteOnShutdown(true);
-        threadPoolTaskScheduler.setAwaitTerminationSeconds(10);
-        threadPoolTaskScheduler.initialize();
+    @Bean
+    public ThreadPoolTaskScheduler threadPoolTaskScheduler() {
+        ThreadPoolTaskScheduler schedulerPool = new ThreadPoolTaskScheduler();
+        schedulerPool.setPoolSize(300);
+        schedulerPool.setWaitForTasksToCompleteOnShutdown(true);
+        schedulerPool.setAwaitTerminationSeconds(10);
+        return schedulerPool;
+
     }
 
     /**
@@ -46,9 +49,6 @@ public class DynamicTask {
      * @return
      */
     public void startCron(String key, Runnable task, int cycleForCatalog) {
-        if(ObjectUtils.isEmpty(key)) {
-            return;
-        }
         ScheduledFuture<?> future = futureMap.get(key);
         if (future != null) {
             if (future.isCancelled()) {
@@ -77,9 +77,6 @@ public class DynamicTask {
      * @return
      */
     public void startDelay(String key, Runnable task, int delay) {
-        if(ObjectUtils.isEmpty(key)) {
-            return;
-        }
         stop(key);
 
         // 获取执行的时刻
@@ -105,23 +102,15 @@ public class DynamicTask {
         }
     }
 
-    public boolean stop(String key) {
-        if(ObjectUtils.isEmpty(key)) {
-            return false;
-        }
-        boolean result = false;
-        if (!ObjectUtils.isEmpty(futureMap.get(key)) && !futureMap.get(key).isCancelled() && !futureMap.get(key).isDone()) {
-            result = futureMap.get(key).cancel(false);
+    public void stop(String key) {
+        if (futureMap.get(key) != null && !futureMap.get(key).isCancelled()) {
+            futureMap.get(key).cancel(false);
             futureMap.remove(key);
             runnableMap.remove(key);
         }
-        return result;
     }
 
     public boolean contains(String key) {
-        if(ObjectUtils.isEmpty(key)) {
-            return false;
-        }
         return futureMap.get(key) != null;
     }
 
@@ -130,9 +119,6 @@ public class DynamicTask {
     }
 
     public Runnable get(String key) {
-        if(ObjectUtils.isEmpty(key)) {
-            return null;
-        }
         return runnableMap.get(key);
     }
 
@@ -143,16 +129,11 @@ public class DynamicTask {
     public void execute(){
         if (futureMap.size() > 0) {
             for (String key : futureMap.keySet()) {
-                ScheduledFuture<?> future = futureMap.get(key);
-                if (future.isDone() || future.isCancelled()) {
+                if (futureMap.get(key).isDone()) {
                     futureMap.remove(key);
                     runnableMap.remove(key);
                 }
             }
         }
-    }
-
-    public boolean isAlive(String key) {
-        return futureMap.get(key) != null && !futureMap.get(key).isDone() && !futureMap.get(key).isCancelled();
     }
 }

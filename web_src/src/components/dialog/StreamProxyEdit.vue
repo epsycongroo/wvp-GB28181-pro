@@ -33,13 +33,13 @@
               <el-form-item label="拉流地址" prop="url" v-if="proxyParam.type=='default'">
                 <el-input v-model="proxyParam.url" clearable></el-input>
               </el-form-item>
-              <el-form-item label="拉流地址" prop="srcUrl" v-if="proxyParam.type=='ffmpeg'">
-                <el-input v-model="proxyParam.srcUrl" clearable></el-input>
+              <el-form-item label="拉流地址" prop="src_url" v-if="proxyParam.type=='ffmpeg'">
+                <el-input v-model="proxyParam.src_url" clearable></el-input>
               </el-form-item>
-              <el-form-item label="超时时间:毫秒" prop="timeoutMs" v-if="proxyParam.type=='ffmpeg'">
-                <el-input v-model="proxyParam.timeoutMs" clearable></el-input>
+              <el-form-item label="超时时间:毫秒" prop="timeout_ms" v-if="proxyParam.type=='ffmpeg'">
+                <el-input v-model="proxyParam.timeout_ms" clearable></el-input>
               </el-form-item>
-              <el-form-item label="节点选择" prop="rtpType">
+              <el-form-item label="节点选择" prop="rtp_type">
                 <el-select
                   v-model="proxyParam.mediaServerId"
                   @change="mediaServerIdChange"
@@ -54,9 +54,10 @@
                   </el-option>
                 </el-select>
               </el-form-item>
-              <el-form-item label="FFmpeg命令模板" prop="ffmpegCmdKey" v-if="proxyParam.type=='ffmpeg'">
+              <el-form-item label="FFmpeg命令模板" prop="ffmpeg_cmd_key" v-if="proxyParam.type=='ffmpeg'">
+<!--                <el-input v-model="proxyParam.ffmpeg_cmd_key" clearable></el-input>-->
                 <el-select
-                  v-model="proxyParam.ffmpegCmdKey"
+                  v-model="proxyParam.ffmpeg_cmd_key"
                   style="width: 100%"
                   placeholder="请选择FFmpeg命令模板"
                 >
@@ -71,9 +72,9 @@
               <el-form-item label="国标编码" prop="gbId">
                 <el-input v-model="proxyParam.gbId" placeholder="设置国标编码可推送到国标" clearable></el-input>
               </el-form-item>
-              <el-form-item label="拉流方式" prop="rtpType" v-if="proxyParam.type=='default'">
+              <el-form-item label="拉流方式" prop="rtp_type" v-if="proxyParam.type=='default'">
                 <el-select
-                  v-model="proxyParam.rtpType"
+                  v-model="proxyParam.rtp_type"
                   style="width: 100%"
                   placeholder="请选择拉流方式"
                 >
@@ -83,26 +84,28 @@
                 </el-select>
               </el-form-item>
 
-            <el-form-item label="无人观看" prop="rtpType" >
-              <el-radio v-model="proxyParam.noneReader" label="0">不做处理</el-radio>
-              <el-radio v-model="proxyParam.noneReader" label="1">停用</el-radio>
-              <el-radio v-model="proxyParam.noneReader" label="2">移除</el-radio>
-<!--              <el-select-->
-<!--                @change="noneReaderHandler"-->
-<!--                v-model="proxyParam.noneReader"-->
-<!--                style="width: 100%"-->
-<!--                placeholder="请选择无人观看的处理方式"-->
-<!--              >-->
-<!--                <el-option label="不做处理" value="0"></el-option>-->
-<!--                <el-option label="停用" value="1"></el-option>-->
-<!--                <el-option label="移除" value="2"></el-option>-->
-<!--              </el-select>-->
-            </el-form-item>
+              <el-form-item label="国标平台">
+                <el-select
+                  v-model="proxyParam.platformGbId"
+                  style="width: 100%"
+                  placeholder="请选择国标平台"
+                >
+                  <el-option
+                    v-for="item in platformList"
+                    :key="item.name"
+                    :label="item.name"
+                    :value="item.serverGBId">
+                    <span style="float: left">{{ item.name }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ item.serverGBId }}</span>
+                  </el-option>
+                </el-select>
+              </el-form-item>
               <el-form-item label="其他选项">
                 <div style="float: left;">
                   <el-checkbox label="启用" v-model="proxyParam.enable" ></el-checkbox>
-                  <el-checkbox label="开启音频" v-model="proxyParam.enableAudio" ></el-checkbox>
-                  <el-checkbox label="录制" v-model="proxyParam.enableMp4" ></el-checkbox>
+                  <el-checkbox label="转HLS" v-model="proxyParam.enable_hls" ></el-checkbox>
+                  <el-checkbox label="MP4录制" v-model="proxyParam.enable_mp4" ></el-checkbox>
+                  <el-checkbox label="无人观看自动删除" v-model="proxyParam.enable_remove_none_reader" ></el-checkbox>
                 </div>
 
               </el-form-item>
@@ -158,17 +161,15 @@ export default {
           app: null,
           stream: null,
           url: "",
-          srcUrl: null,
-          timeoutMs: null,
-          ffmpegCmdKey: null,
+          src_url: null,
+          timeout_ms: null,
+          ffmpeg_cmd_key: null,
           gbId: null,
-          rtpType: null,
+          rtp_type: null,
           enable: true,
-          enableAudio: true,
-          enableMp4: false,
-          noneReader: null,
-          enableRemoveNoneReader: false,
-          enableDisableNoneReader: false,
+          enable_hls: true,
+          enable_mp4: false,
+          enable_remove_none_reader: false,
           platformGbId: null,
           mediaServerId: null,
       },
@@ -180,9 +181,9 @@ export default {
         app: [{ required: true, message: "请输入应用名", trigger: "blur" }],
         stream: [{ required: true, message: "请输入流ID", trigger: "blur" }],
         url: [{ required: true, message: "请输入要代理的流", trigger: "blur" }],
-        srcUrl: [{ required: true, message: "请输入要代理的流", trigger: "blur" }],
-        timeoutMs: [{ required: true, message: "请输入FFmpeg推流成功超时时间", trigger: "blur" }],
-        ffmpegCmdKey: [{ required: false, message: "请输入FFmpeg命令参数模板（可选）", trigger: "blur" }],
+        src_url: [{ required: true, message: "请输入要代理的流", trigger: "blur" }],
+        timeout_ms: [{ required: true, message: "请输入FFmpeg推流成功超时时间", trigger: "blur" }],
+        ffmpeg_cmd_key: [{ required: false, message: "请输入FFmpeg命令参数模板（可选）", trigger: "blur" }],
       },
     };
   },
@@ -192,7 +193,6 @@ export default {
       this.listChangeCallback = callback;
       if (proxyParam != null) {
         this.proxyParam = proxyParam;
-        this.proxyParam.noneReader = null;
       }
 
       let that = this;
@@ -200,7 +200,7 @@ export default {
         method: 'get',
         url:`/api/platform/query/10000/1`
       }).then(function (res) {
-        that.platformList = res.data.data.list;
+        that.platformList = res.data.list;
       }).catch(function (error) {
         console.log(error);
       });
@@ -221,7 +221,7 @@ export default {
           }
         }).then(function (res) {
           that.ffmpegCmdList = res.data.data;
-          that.proxyParam.ffmpegCmdKey = Object.keys(res.data.data)[0];
+          that.proxyParam.ffmpeg_cmd_key = Object.keys(res.data.data)[0];
         }).catch(function (error) {
           console.log(error);
         });
@@ -230,26 +230,26 @@ export default {
     },
     onSubmit: function () {
       this.dialogLoading = true;
-      this.noneReaderHandler();
-      this.$axios({
+      var that = this;
+      that.$axios({
         method: 'post',
         url:`/api/proxy/save`,
-        data: this.proxyParam
-      }).then((res)=> {
-        this.dialogLoading = false;
+        data: that.proxyParam
+      }).then(function (res) {
+        that.dialogLoading = false;
         if (typeof (res.data.code) != "undefined" && res.data.code === 0) {
-          this.$message({
+          that.$message({
             showClose: true,
             message: res.data.msg,
             type: "success",
           });
-          this.showDialog = false;
-          if (this.listChangeCallback != null) {
-            this.listChangeCallback();
-            this.dialogLoading = false;
+          that.showDialog = false;
+          if (that.listChangeCallback != null) {
+            that.listChangeCallback();
+            that.dialogLoading = false;
           }
         }
-      }).catch((error) =>{
+      }).catch(function (error) {
         console.log(error);
         this.dialogLoading = false;
       });
@@ -263,7 +263,7 @@ export default {
       var result = false;
       var that = this;
       await that.$axios({
-        method: 'get',
+        method: 'post',
         url:`/api/platform/exit/${deviceGbId}`
       }).then(function (res) {
         result = res.data;
@@ -276,19 +276,7 @@ export default {
       if (this.platform.enable && this.platform.expires == "0") {
         this.platform.expires = "300";
       }
-    },
-    noneReaderHandler: function() {
-      if (this.proxyParam.noneReader === null || this.proxyParam.noneReader === "0") {
-        this.proxyParam.enableDisableNoneReader = false;
-        this.proxyParam.enableRemoveNoneReader = false;
-      }else if (this.proxyParam.noneReader === "1"){
-        this.proxyParam.enableDisableNoneReader = true;
-        this.proxyParam.enableRemoveNoneReader = false;
-      }else if (this.proxyParam.noneReader ==="2"){
-        this.proxyParam.enableDisableNoneReader = false;
-        this.proxyParam.enableRemoveNoneReader = true;
-      }
-    },
+    }
   },
 };
 </script>

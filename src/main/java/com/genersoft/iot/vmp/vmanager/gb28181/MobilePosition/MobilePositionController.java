@@ -1,38 +1,40 @@
 package com.genersoft.iot.vmp.vmanager.gb28181.MobilePosition;
 
-import com.genersoft.iot.vmp.conf.exception.ControllerException;
-import com.genersoft.iot.vmp.conf.security.JwtUtils;
+import java.util.List;
+import java.util.UUID;
+
 import com.genersoft.iot.vmp.gb28181.bean.Device;
 import com.genersoft.iot.vmp.gb28181.bean.MobilePosition;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.DeferredResultHolder;
 import com.genersoft.iot.vmp.gb28181.transmit.callback.RequestMessage;
 import com.genersoft.iot.vmp.gb28181.transmit.cmd.impl.SIPCommander;
-import com.genersoft.iot.vmp.service.IDeviceChannelService;
 import com.genersoft.iot.vmp.service.IDeviceService;
 import com.genersoft.iot.vmp.storager.IVideoManagerStorage;
-import com.genersoft.iot.vmp.vmanager.bean.ErrorCode;
+import com.genersoft.iot.vmp.vmanager.bean.WVPResult;
 import com.github.pagehelper.util.StringUtil;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.async.DeferredResult;
-
-import javax.sip.InvalidArgumentException;
-import javax.sip.SipException;
-import java.text.ParseException;
-import java.util.List;
-import java.util.UUID;
 
 /**
  *  位置信息管理
  */
-@Tag(name  = "位置信息管理")
-
+@Api(tags = "位置信息管理")
+@CrossOrigin
 @RestController
 @RequestMapping("/api/position")
 public class MobilePositionController {
@@ -51,26 +53,28 @@ public class MobilePositionController {
 	@Autowired
 	private IDeviceService deviceService;
 
-	@Autowired
-	private IDeviceChannelService deviceChannelService;
-
     /**
-     * 查询历史轨迹
+     *  查询历史轨迹
      * @param deviceId 设备ID
      * @param start 开始时间
      * @param end 结束时间
      * @return
      */
-    @Operation(summary = "查询历史轨迹", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "deviceId", description = "设备国标编号", required = true)
-    @Parameter(name = "channelId", description = "通道国标编号")
-    @Parameter(name = "start", description = "开始时间")
-    @Parameter(name = "end", description = "结束时间")
+    @ApiOperation("查询历史轨迹")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+            @ApiImplicitParam(name = "channelId", value = "通道ID", required = false, dataTypeClass = String.class),
+            @ApiImplicitParam(name = "start", value = "开始时间", required = false, dataTypeClass = String.class),
+            @ApiImplicitParam(name = "end", value = "结束时间", required = false, dataTypeClass = String.class),
+    })
     @GetMapping("/history/{deviceId}")
-    public List<MobilePosition> positions(@PathVariable String deviceId,
+    public ResponseEntity<WVPResult<List<MobilePosition>>> positions(@PathVariable String deviceId,
                                                                      @RequestParam(required = false) String channelId,
                                                                      @RequestParam(required = false) String start,
                                                                      @RequestParam(required = false) String end) {
+//        if (logger.isDebugEnabled()) {
+//            logger.debug("查询设备" + deviceId + "的历史轨迹");
+//        }
 
         if (StringUtil.isEmpty(start)) {
             start = null;
@@ -78,7 +82,11 @@ public class MobilePositionController {
         if (StringUtil.isEmpty(end)) {
             end = null;
         }
-        return storager.queryMobilePositions(deviceId, channelId, start, end);
+        WVPResult<List<MobilePosition>> wvpResult = new WVPResult<>();
+        wvpResult.setCode(0);
+        List<MobilePosition> result = storager.queryMobilePositions(deviceId, channelId, start, end);
+        wvpResult.setData(result);
+        return new ResponseEntity<>(wvpResult, HttpStatus.OK);
     }
 
     /**
@@ -86,11 +94,17 @@ public class MobilePositionController {
      * @param deviceId 设备ID
      * @return
      */
-    @Operation(summary = "查询设备最新位置", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "deviceId", description = "设备国标编号", required = true)
+    @ApiOperation("查询设备最新位置")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+    })
     @GetMapping("/latest/{deviceId}")
-    public MobilePosition latestPosition(@PathVariable String deviceId) {
-        return storager.queryLatestPosition(deviceId);
+    public ResponseEntity<MobilePosition> latestPosition(@PathVariable String deviceId) {
+//        if (logger.isDebugEnabled()) {
+//            logger.debug("查询设备" + deviceId + "的最新位置");
+//        }
+        MobilePosition result = storager.queryLatestPosition(deviceId);
+        return new ResponseEntity<>(result, HttpStatus.OK);
     }
 
     /**
@@ -98,26 +112,23 @@ public class MobilePositionController {
      * @param deviceId 设备ID
      * @return
      */
-    @Operation(summary = "获取移动位置信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "deviceId", description = "设备国标编号", required = true)
+    @ApiOperation("获取移动位置信息")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+    })
     @GetMapping("/realtime/{deviceId}")
-    public DeferredResult<MobilePosition> realTimePosition(@PathVariable String deviceId) {
+    public DeferredResult<ResponseEntity<MobilePosition>> realTimePosition(@PathVariable String deviceId) {
         Device device = storager.queryVideoDevice(deviceId);
         String uuid = UUID.randomUUID().toString();
-        String key = DeferredResultHolder.CALLBACK_CMD_MOBILE_POSITION + deviceId;
-        try {
-            cmder.mobilePostitionQuery(device, event -> {
-                RequestMessage msg = new RequestMessage();
-                msg.setId(uuid);
-                msg.setKey(key);
-                msg.setData(String.format("获取移动位置信息失败，错误码： %s, %s", event.statusCode, event.msg));
-                resultHolder.invokeResult(msg);
-            });
-        } catch (InvalidArgumentException | SipException | ParseException e) {
-            logger.error("[命令发送失败] 获取移动位置信息: {}", e.getMessage());
-            throw new ControllerException(ErrorCode.ERROR100.getCode(), "命令发送失败: " + e.getMessage());
-        }
-        DeferredResult<MobilePosition> result = new DeferredResult<MobilePosition>(5*1000L);
+        String key = DeferredResultHolder.CALLBACK_CMD_MOBILEPOSITION + deviceId;
+        cmder.mobilePostitionQuery(device, event -> {
+			RequestMessage msg = new RequestMessage();
+			msg.setId(uuid);
+            msg.setKey(key);
+			msg.setData(String.format("获取移动位置信息失败，错误码： %s, %s", event.statusCode, event.msg));
+			resultHolder.invokeResult(msg);
+		});
+        DeferredResult<ResponseEntity<MobilePosition>> result = new DeferredResult<ResponseEntity<MobilePosition>>(5*1000L);
 		result.onTimeout(()->{
 			logger.warn(String.format("获取移动位置信息超时"));
 			// 释放rtpserver
@@ -138,14 +149,20 @@ public class MobilePositionController {
      * @param interval 上报时间间隔
      * @return true = 命令发送成功
      */
-    @Operation(summary = "订阅位置信息", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "deviceId", description = "设备国标编号", required = true)
-    @Parameter(name = "expires", description = "订阅超时时间", required = true)
-    @Parameter(name = "interval", description = "上报时间间隔", required = true)
+    @ApiOperation("订阅位置信息")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "deviceId", value = "设备ID", required = true, dataTypeClass = String.class),
+            @ApiImplicitParam(name = "expires", value = "订阅超时时间", dataTypeClass = String.class),
+            @ApiImplicitParam(name = "interval", value = "上报时间间隔", dataTypeClass = String.class),
+    })
     @GetMapping("/subscribe/{deviceId}")
-    public void positionSubscribe(@PathVariable String deviceId,
+    public ResponseEntity<String> positionSubscribe(@PathVariable String deviceId,
                                                     @RequestParam String expires,
                                                     @RequestParam String interval) {
+        String msg = ((expires.equals("0")) ? "取消" : "") + "订阅设备" + deviceId + "的移动位置";
+        if (logger.isDebugEnabled()) {
+            logger.debug(msg);
+        }
 
         if (StringUtil.isEmpty(interval)) {
             interval = "5";
@@ -154,28 +171,13 @@ public class MobilePositionController {
         device.setSubscribeCycleForMobilePosition(Integer.parseInt(expires));
         device.setMobilePositionSubmissionInterval(Integer.parseInt(interval));
         deviceService.updateDevice(device);
-        if (!deviceService.removeMobilePositionSubscribe(device)) {
-            throw new ControllerException(ErrorCode.ERROR100);
+        String result = msg;
+        if (deviceService.removeMobilePositionSubscribe(device)) {
+            result += "，成功";
+        } else {
+            result += "，失败";
         }
-    }
 
-    /**
-     * 数据位置信息格式处理
-     * @param deviceId 设备ID
-     * @return true = 命令发送成功
-     */
-    @Operation(summary = "数据位置信息格式处理", security = @SecurityRequirement(name = JwtUtils.HEADER))
-    @Parameter(name = "deviceId", description = "设备国标编号", required = true)
-    @GetMapping("/transform/{deviceId}")
-    public void positionTransform(@PathVariable String deviceId) {
-
-        Device device = deviceService.getDevice(deviceId);
-        if (device == null) {
-            throw new ControllerException(ErrorCode.ERROR400.getCode(), "未找到设备： " + deviceId);
-        }
-        boolean result = deviceChannelService.updateAllGps(device);
-        if (!result) {
-            throw new ControllerException(ErrorCode.ERROR100);
-        }
+        return new ResponseEntity<>(result, HttpStatus.OK);
     }
 }
